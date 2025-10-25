@@ -1,0 +1,212 @@
+{
+  "name": "Data Validator",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "validator",
+        "responseMode": "responseNode"
+      },
+      "id": "webhook-validator-001",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [240, 300],
+      "webhookId": "validator-webhook-001"
+    },
+    {
+      "parameters": {
+        "functionCode": "// Extract incoming data and initialize validation context\nconst incomingData = $('Webhook Trigger').first().json.body || $('Webhook Trigger').first().json;\nconst executionId = incomingData.executionId || `valid_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;\n\n// Initialize validation context\nconst validationContext = {\n  executionId,\n  workflowName: 'data-validator',\n  startTime: new Date().toISOString(),\n  originalData: incomingData,\n  version: incomingData.version || `v${new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5)}`\n};\n\nreturn validationContext;"
+      },
+      "id": "init-validation-001",
+      "name": "Initialize Validation",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Schema validation function\nconst data = $('Initialize Validation').first().json.originalData;\nconst validationResults = {\n  executionId: $('Initialize Validation').first().json.executionId,\n  version: $('Initialize Validation').first().json.version,\n  validationTimestamp: new Date().toISOString(),\n  validRecords: [],\n  invalidRecords: [],\n  errors: [],\n  summary: {\n    totalRecords: 0,\n    validCount: 0,\n    invalidCount: 0,\n    validationRate: 0,\n    hasData: false,\n    hasTimestamp: false,\n    recordCount: 0\n  }\n};\n\n// Validation rules\nconst validationRules = {\n  requiredFields: ['executionId', 'version', 'collectionTimestamp'],\n  dataStructure: {\n    hasData: (d) => Boolean(d && (d.sources || d.summary)),\n    hasTimestamp: (d) => Boolean(d.collectionTimestamp),\n    recordCount: (d) => {\n      const summary = d.summary;\n      return summary && typeof summary.totalRecords === 'number' && summary.totalRecords > 0;\n    }\n  }\n};\n\n// Perform validation\ntry {\n  // Check basic structure\n  validationResults.summary.hasData = validationRules.dataStructure.hasData(data);\n  validationResults.summary.hasTimestamp = validationRules.dataStructure.hasTimestamp(data);\n  validationResults.summary.recordCount = data.summary?.totalRecords || 0;\n  \n  // Validate required fields\n  validationRules.requiredFields.forEach(field => {\n    if (!data[field]) {\n      validationResults.errors.push({\n        field,\n        error: 'Required field missing',\n        severity: 'high'\n      });\n    }\n  });\n  \n  // Validate data sources\n  if (data.sources) {\n    Object.entries(data.sources).forEach(([sourceName, sourceData]) => {\n      if (!sourceData) {\n        validationResults.errors.push({\n          field: `sources.${sourceName}`,\n          error: 'Source data is null or undefined',\n          severity: 'medium'\n        });\n      } else if (!sourceData.data) {\n        validationResults.errors.push({\n          field: `sources.${sourceName}.data`,\n          error: 'Source data content missing',\n          severity: 'high'\n        });\n      } else {\n        // Valid source data\n        validationResults.validRecords.push({\n          source: sourceName,\n          recordCount: Array.isArray(sourceData.data.articles) ? sourceData.data.articles.length : 1,\n          dataQuality: sourceData.metadata?.data_quality || 'unknown',\n          timestamp: sourceData.data.timestamp\n        });\n      }\n    });\n  }\n  \n  // Calculate validation metrics\n  validationResults.summary.totalRecords = validationResults.validRecords.length + validationResults.invalidRecords.length;\n  validationResults.summary.validCount = validationResults.validRecords.length;\n  validationResults.summary.invalidCount = validationResults.invalidRecords.length;\n  validationResults.summary.validationRate = validationResults.summary.totalRecords > 0 \n    ? Math.round((validationResults.summary.validCount / validationResults.summary.totalRecords) * 100)\n    : 0;\n  \n  // Determine overall validation status\n  validationResults.isValid = validationResults.errors.length === 0 && \n                             validationResults.summary.validationRate >= 80 &&\n                             validationResults.summary.hasData &&\n                             validationResults.summary.hasTimestamp &&\n                             validationResults.summary.recordCount > 0;\n                             \n  validationResults.overallStatus = validationResults.isValid ? 'valid' : 'invalid';\n  \n} catch (error) {\n  validationResults.errors.push({\n    field: 'validation_process',\n    error: `Validation process failed: ${error.message}`,\n    severity: 'critical'\n  });\n  validationResults.isValid = false;\n  validationResults.overallStatus = 'error';\n}\n\nreturn validationResults;"
+      },
+      "id": "schema-validation-001",
+      "name": "Schema Validation",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "validation-success-condition",
+              "leftValue": "={{ $('Schema Validation').first().json.isValid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equal"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-validation-result-001",
+      "name": "Check Validation Result",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.PROCESSOR_WEBHOOK_URL || 'http://n8n:5678/webhook/processor' }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  validatedData: $('Initialize Validation').first().json.originalData,\n  validationResults: $('Schema Validation').first().json,\n  validationStatus: 'passed'\n}) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "trigger-processor-001",
+      "name": "Trigger Processor",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [1120, 180]
+    },
+    {
+      "parameters": {
+        "table": "alerts",
+        "columns": "alert_type, severity, workflow_name, message, execution_id, created_at",
+        "additionalFields": {
+          "mode": "insert"
+        }
+      },
+      "id": "create-validation-alert-001",
+      "name": "Create Validation Alert",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [1120, 420],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-n8n-credentials",
+          "name": "PostgreSQL n8n"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"status\": \"success\",\n  \"executionId\": \"{{ $('Schema Validation').first().json.executionId }}\",\n  \"version\": \"{{ $('Schema Validation').first().json.version }}\",\n  \"message\": \"Data validation completed successfully\",\n  \"timestamp\": \"{{ new Date().toISOString() }}\",\n  \"validationSummary\": {{ JSON.stringify($('Schema Validation').first().json.summary) }}\n}"
+      },
+      "id": "success-response-001",
+      "name": "Success Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1340, 180]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"status\": \"validation_failed\",\n  \"executionId\": \"{{ $('Schema Validation').first().json.executionId }}\",\n  \"version\": \"{{ $('Schema Validation').first().json.version }}\",\n  \"message\": \"Data validation failed\",\n  \"timestamp\": \"{{ new Date().toISOString() }}\",\n  \"validationSummary\": {{ JSON.stringify($('Schema Validation').first().json.summary) }}\n}",
+        "options": {
+          "responseCode": 422
+        }
+      },
+      "id": "validation-failure-response-001",
+      "name": "Validation Failure Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1340, 420]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Initialize Validation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Initialize Validation": {
+      "main": [
+        [
+          {
+            "node": "Schema Validation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schema Validation": {
+      "main": [
+        [
+          {
+            "node": "Check Validation Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Validation Result": {
+      "main": [
+        [
+          {
+            "node": "Trigger Processor",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Create Validation Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Trigger Processor": {
+      "main": [
+        [
+          {
+            "node": "Success Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Validation Alert": {
+      "main": [
+        [
+          {
+            "node": "Validation Failure Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "validator-v1.0.0",
+  "meta": {
+    "instanceId": "data-validator-001"
+  },
+  "id": "validator-workflow-001"
+}

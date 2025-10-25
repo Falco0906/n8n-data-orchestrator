@@ -1,0 +1,344 @@
+{
+  "name": "Data Intelligence Orchestrator - Main Pipeline with Weather",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 5
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [240, 500]
+    },
+    {
+      "parameters": {
+        "url": "https://api.coindesk.com/v1/bpi/currentprice.json",
+        "options": {}
+      },
+      "id": "http-collector-1",
+      "name": "Collect Bitcoin Price",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [460, 400],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "url": "https://api.openweathermap.org/data/2.5/weather",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "London,UK"
+            },
+            {
+              "name": "appid",
+              "value": "afac250c8cec80ff4e283d88d0f0b794"
+            },
+            {
+              "name": "units",
+              "value": "metric"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "weather-collector",
+      "name": "Collect Weather Data",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [460, 600],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst timestamp = new Date().toISOString();\nconst version = `v${Date.now()}`;\n\nconst result = items.map((item, index) => {\n  const data = item.json;\n  let source = 'unknown';\n  \n  if (data.bpi) {\n    source = 'bitcoin';\n  } else if (data.weather || data.main) {\n    source = 'weather';\n  }\n  \n  return {\n    json: {\n      source: source,\n      data: data,\n      collected_at: timestamp,\n      version: version,\n      record_id: `${source}_${Date.now()}_${index}`\n    }\n  };\n});\n\nreturn result;"
+      },
+      "id": "code-merge",
+      "name": "Merge & Version Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 500]
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst validatedItems = [];\n\nfor (const item of items) {\n  const data = item.json;\n  let isValid = true;\n  let errorReason = '';\n  \n  if (!data.data || Object.keys(data.data).length === 0) {\n    isValid = false;\n    errorReason = 'Empty or missing data object';\n  }\n  if (!data.collected_at) {\n    isValid = false;\n    errorReason = 'Missing timestamp';\n  }\n  if (!data.version) {\n    isValid = false;\n    errorReason = 'Missing version';\n  }\n  \n  const validatedItem = {\n    ...data,\n    validation_status: isValid ? 'passed' : 'failed',\n    validated_at: new Date().toISOString(),\n    error_reason: errorReason || null\n  };\n  \n  validatedItems.push({ json: validatedItem });\n}\n\nreturn validatedItems;"
+      },
+      "id": "code-validator",
+      "name": "Validate Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 500]
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst processedItems = [];\n\nfor (const item of items) {\n  const data = item.json;\n  \n  let processed = {\n    id: data.record_id,\n    source: data.source,\n    version: data.version,\n    collected_at: data.collected_at,\n    validated_at: data.validated_at,\n    processed_at: new Date().toISOString(),\n    metrics: {},\n    data_type: data.source\n  };\n  \n  if (data.data.bpi) {\n    processed.metrics = {\n      usd_rate: parseFloat(data.data.bpi.USD.rate.replace(/,/g, '')),\n      eur_rate: parseFloat(data.data.bpi.EUR.rate.replace(/,/g, '')),\n      gbp_rate: parseFloat(data.data.bpi.GBP.rate.replace(/,/g, '')),\n      updated: data.data.time.updated\n    };\n  }\n  \n  if (data.data.main) {\n    processed.metrics = {\n      temperature: data.data.main.temp,\n      feels_like: data.data.main.feels_like,\n      humidity: data.data.main.humidity,\n      pressure: data.data.main.pressure,\n      weather_condition: data.data.weather[0].main,\n      weather_description: data.data.weather[0].description,\n      city: data.data.name,\n      country: data.data.sys.country\n    };\n  }\n  \n  processed.processing_status = 'completed';\n  processed.metric_count = Object.keys(processed.metrics).length;\n  \n  processedItems.push({ json: processed });\n}\n\nreturn processedItems;"
+      },
+      "id": "code-processor",
+      "name": "Process & Transform",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 500]
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst enrichedItems = [];\n\nfor (const item of items) {\n  const data = item.json;\n  let qualityScore = 100;\n  \n  if (!data.metrics || Object.keys(data.metrics).length === 0) {\n    qualityScore -= 40;\n  } else if (Object.keys(data.metrics).length < 3) {\n    qualityScore -= 20;\n  }\n  \n  if (!data.version) qualityScore -= 10;\n  if (!data.processed_at) qualityScore -= 10;\n  if (data.processing_status !== 'completed') qualityScore -= 20;\n  \n  const enriched = {\n    ...data,\n    quality_score: qualityScore,\n    quality_grade: qualityScore >= 90 ? 'A' : qualityScore >= 80 ? 'B' : qualityScore >= 70 ? 'C' : 'D',\n    enrichment_timestamp: new Date().toISOString(),\n    pipeline_stage: 'enrichment',\n    data_completeness: qualityScore >= 80 ? 'high' : qualityScore >= 50 ? 'medium' : 'low',\n    is_production_ready: qualityScore >= 80\n  };\n  \n  enrichedItems.push({ json: enriched });\n}\n\nreturn enrichedItems;"
+      },
+      "id": "custom-enrichment",
+      "name": "Custom Data Enrichment",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1340, 500]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "log-1",
+              "name": "timestamp",
+              "value": "={{ $json.enrichment_timestamp }}",
+              "type": "string"
+            },
+            {
+              "id": "log-2",
+              "name": "version",
+              "value": "={{ $json.version }}",
+              "type": "string"
+            },
+            {
+              "id": "log-3",
+              "name": "source",
+              "value": "={{ $json.source }}",
+              "type": "string"
+            },
+            {
+              "id": "log-4",
+              "name": "quality_score",
+              "value": "={{ $json.quality_score }}",
+              "type": "number"
+            },
+            {
+              "id": "log-5",
+              "name": "metrics",
+              "value": "={{ JSON.stringify($json.metrics) }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "log-formatter",
+      "name": "Log to Audit Trail",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.3,
+      "position": [1560, 500]
+    },
+    {
+      "parameters": {
+        "path": "status",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook Status Endpoint",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"status\": \"OK\", \"message\": \"Webhook working!\", \"timestamp\": $now.toISO(), \"pipeline\": \"Data Intelligence Orchestrator\" } }}",
+        "options": {}
+      },
+      "id": "respond-to-webhook",
+      "name": "Respond Status",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "validation-check",
+              "leftValue": "={{ $json.validation_status }}",
+              "rightValue": "failed",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "if-validation-failed",
+      "name": "Check Validation",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [900, 700]
+    },
+    {
+      "parameters": {
+        "fromEmail": "faisal96kp@gmail.com",
+        "toEmail": "faisal96kp@gmail.com",
+        "subject": "=⚠️ Data Validation Error - {{ $json.validated_at }}",
+        "emailType": "html",
+        "message": "=<html><body style=\"font-family: Arial;\"><h2 style=\"color: #d32f2f;\">🚨 Validation Error</h2><table style=\"border-collapse: collapse; width: 100%;\"><tr><td style=\"padding: 8px; border: 1px solid #ddd;\"><strong>Time:</strong></td><td style=\"padding: 8px; border: 1px solid #ddd;\">{{ $json.validated_at }}</td></tr><tr><td style=\"padding: 8px; border: 1px solid #ddd;\"><strong>Source:</strong></td><td style=\"padding: 8px; border: 1px solid #ddd;\">{{ $json.source }}</td></tr><tr><td style=\"padding: 8px; border: 1px solid #ddd;\"><strong>Reason:</strong></td><td style=\"padding: 8px; border: 1px solid #ddd;\">{{ $json.error_reason }}</td></tr></table></body></html>",
+        "options": {}
+      },
+      "id": "email-alert",
+      "name": "Email Alert",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [1120, 820]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Collect Bitcoin Price",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Collect Weather Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Collect Bitcoin Price": {
+      "main": [
+        [
+          {
+            "node": "Merge & Version Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Collect Weather Data": {
+      "main": [
+        [
+          {
+            "node": "Merge & Version Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge & Version Data": {
+      "main": [
+        [
+          {
+            "node": "Validate Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Data": {
+      "main": [
+        [
+          {
+            "node": "Check Validation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process & Transform": {
+      "main": [
+        [
+          {
+            "node": "Custom Data Enrichment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Custom Data Enrichment": {
+      "main": [
+        [
+          {
+            "node": "Log to Audit Trail",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook Status Endpoint": {
+      "main": [
+        [
+          {
+            "node": "Respond Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Validation": {
+      "main": [
+        [
+          {
+            "node": "Email Alert",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Process & Transform",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1",
+  "id": "data-intelligence-orchestrator-complete",
+  "meta": {
+    "instanceId": "n8n-cloud"
+  },
+  "tags": []
+}

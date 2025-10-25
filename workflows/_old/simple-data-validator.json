@@ -1,0 +1,160 @@
+{
+  "name": "Simple Data Validator",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "validator",
+        "responseMode": "responseNode"
+      },
+      "id": "webhook-validator",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [300, 200]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "validation-check-1",
+              "leftValue": "={{ $json.sources }}",
+              "rightValue": "",
+              "operator": {
+                "type": "object",
+                "operation": "exists"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "validate-data",
+      "name": "Validate Data",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [500, 200]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "validationStatus",
+              "value": "valid"
+            },
+            {
+              "name": "validationScore", 
+              "value": "0.95"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "set-valid",
+      "name": "Set Valid",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [700, 120]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "validationStatus",
+              "value": "invalid"
+            },
+            {
+              "name": "validationScore",
+              "value": "0.0"
+            },
+            {
+              "name": "errorMessage",
+              "value": "Missing required data sources"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "set-invalid",
+      "name": "Set Invalid",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [700, 280]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ {\n  \"status\": $json.validationStatus === 'valid' ? \"success\" : \"error\",\n  \"message\": $json.validationStatus === 'valid' ? \"Data validation passed\" : \"Data validation failed\",\n  \"validationResult\": {\n    \"status\": $json.validationStatus,\n    \"score\": $json.validationScore,\n    \"errorMessage\": $json.errorMessage || null\n  },\n  \"timestamp\": new Date().toISOString()\n} }}"
+      },
+      "id": "respond-validation",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [900, 200]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Validate Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Data": {
+      "main": [
+        [
+          {
+            "node": "Set Valid",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Set Invalid",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Valid": {
+      "main": [
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Invalid": {
+      "main": [
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {},
+  "versionId": "1"
+}

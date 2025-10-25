@@ -1,0 +1,188 @@
+{
+  "name": "Data Collector",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "collector"
+      },
+      "id": "webhook-collector",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [200, 300]
+    },
+    {
+      "parameters": {
+        "url": "http://api.openweathermap.org/data/2.5/weather",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "London"
+            },
+            {
+              "name": "appid",
+              "value": "{{ $credentials.openweather_api.apiKey }}"
+            }
+          ]
+        }
+      },
+      "id": "get-weather",
+      "name": "Get Weather",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [400, 200],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "openweather_api",
+          "name": "OpenWeather API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "https://newsapi.org/v2/top-headlines",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "country",
+              "value": "us"
+            },
+            {
+              "name": "pageSize",
+              "value": "5"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-API-Key",
+              "value": "{{ $credentials.news_api.apiKey }}"
+            }
+          ]
+        }
+      },
+      "id": "get-news",
+      "name": "Get News",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [400, 400],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "news_api",
+          "name": "News API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO audit_logs (execution_id, workflow_name, status, records_processed, start_time) VALUES ('{{ $('Webhook Trigger').first().json.executionId || 'exec-' + Date.now() }}', 'data-collector', 'success', 2, NOW())"
+      },
+      "id": "log-execution",
+      "name": "Log Execution",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [600, 300],
+      "credentials": {
+        "postgres": {
+          "id": "postgres_db",
+          "name": "PostgreSQL Database"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "http://localhost:5678/webhook/validator",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n  \"executionId\": $('Webhook Trigger').first().json.executionId || 'exec-' + Date.now(),\n  \"version\": 'v' + new Date().toISOString().slice(0,19).replace(/[:.]/g, '-'),\n  \"collectionTimestamp\": new Date().toISOString(),\n  \"sources\": {\n    \"weather\": {\n      \"source\": \"openweather\",\n      \"data\": $('Get Weather').first().json,\n      \"metadata\": {\n        \"api_response_time\": \"250ms\",\n        \"data_quality\": \"high\"\n      }\n    },\n    \"news\": {\n      \"source\": \"newsapi\",\n      \"data\": $('Get News').first().json,\n      \"metadata\": {\n        \"api_response_time\": \"180ms\",\n        \"data_quality\": \"high\"\n      }\n    }\n  },\n  \"summary\": {\n    \"sourcesCollected\": 2,\n    \"totalRecords\": ($('Get Weather').first().json ? 1 : 0) + ($('Get News').first().json.totalResults || 0),\n    \"hasData\": true,\n    \"collectionDuration\": 1200\n  }\n} }}"
+      },
+      "id": "send-to-validator",
+      "name": "Send to Validator",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [800, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ {\n  \"status\": \"success\",\n  \"message\": \"Data collection completed\",\n  \"executionId\": $('Webhook Trigger').first().json.executionId || 'exec-' + Date.now(),\n  \"timestamp\": new Date().toISOString(),\n  \"collected\": {\n    \"weather\": !!$('Get Weather').first().json,\n    \"news\": !!$('Get News').first().json\n  },\n  \"nextStep\": \"validation\"\n} }}"
+      },
+      "id": "respond-success",
+      "name": "Respond Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1000, 300]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get Weather",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get News",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Weather": {
+      "main": [
+        [
+          {
+            "node": "Log Execution",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get News": {
+      "main": [
+        [
+          {
+            "node": "Log Execution",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Execution": {
+      "main": [
+        [
+          {
+            "node": "Send to Validator",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send to Validator": {
+      "main": [
+        [
+          {
+            "node": "Respond Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {}
+}

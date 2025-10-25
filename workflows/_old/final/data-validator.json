@@ -1,0 +1,179 @@
+{
+  "name": "Data Validator",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "validator"
+      },
+      "id": "webhook-validator",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [200, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "validation-1",
+              "leftValue": "={{ $json.sources && $json.sources.weather && $json.sources.news }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equal"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "validate-sources",
+      "name": "Validate Sources",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [400, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO processed_data (execution_id, data_source, validation_status, record_count, data_checksum) VALUES ('{{ $('Webhook Trigger').first().json.executionId }}', 'combined', 'valid', {{ $('Webhook Trigger').first().json.summary.totalRecords || 0 }}, '{{ $('Webhook Trigger').first().json.version }}')"
+      },
+      "id": "log-valid",
+      "name": "Log Valid Data",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [600, 200],
+      "credentials": {
+        "postgres": {
+          "id": "postgres_db",
+          "name": "PostgreSQL Database"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO alerts (alert_type, severity, workflow_name, message, execution_id) VALUES ('validation_failed', 'high', 'data-validator', 'Data validation failed - missing required sources', '{{ $('Webhook Trigger').first().json.executionId }}')"
+      },
+      "id": "log-invalid",
+      "name": "Log Invalid Data",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [600, 400],
+      "credentials": {
+        "postgres": {
+          "id": "postgres_db",
+          "name": "PostgreSQL Database"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "http://localhost:5678/webhook/processor",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $('Webhook Trigger').first().json }}"
+      },
+      "id": "send-to-processor",
+      "name": "Send to Processor",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [800, 200]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ {\n  \"status\": \"success\",\n  \"message\": \"Data validation completed\",\n  \"validationResult\": {\n    \"isValid\": true,\n    \"score\": 0.95,\n    \"checks\": {\n      \"sourcesPresent\": true,\n      \"dataIntegrity\": \"high\",\n      \"recordCount\": $('Webhook Trigger').first().json.summary.totalRecords\n    }\n  },\n  \"nextStep\": \"processing\",\n  \"timestamp\": new Date().toISOString()\n} }}"
+      },
+      "id": "respond-valid",
+      "name": "Respond Valid",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1000, 200]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ {\n  \"status\": \"error\",\n  \"message\": \"Data validation failed\",\n  \"validationResult\": {\n    \"isValid\": false,\n    \"score\": 0.0,\n    \"errors\": [\"Missing required data sources\"],\n    \"checks\": {\n      \"sourcesPresent\": false,\n      \"dataIntegrity\": \"low\"\n    }\n  },\n  \"timestamp\": new Date().toISOString()\n} }}"
+      },
+      "id": "respond-invalid",
+      "name": "Respond Invalid",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1000, 400]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Validate Sources",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Sources": {
+      "main": [
+        [
+          {
+            "node": "Log Valid Data",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log Invalid Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Valid Data": {
+      "main": [
+        [
+          {
+            "node": "Send to Processor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Invalid Data": {
+      "main": [
+        [
+          {
+            "node": "Respond Invalid",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send to Processor": {
+      "main": [
+        [
+          {
+            "node": "Respond Valid",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {}
+}

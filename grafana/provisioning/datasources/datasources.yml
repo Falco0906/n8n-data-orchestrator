@@ -13,23 +13,33 @@ datasources:
       sslmode: disable
       postgresVersion: 1500
       timescaledb: false
+      maxOpenConns: 10
+      maxIdleConns: 5
+      maxConnLifetimeSeconds: 300
     isDefault: true
     editable: true
 
-  - name: n8n-API
-    type: grafana-simple-json-datasource
+  - name: PostgreSQL-System
+    type: postgres
     access: proxy
-    url: http://n8n:5678/webhook/grafana-data
-    basicAuth: true
-    basicAuthUser: ${N8N_BASIC_AUTH_USER}
+    url: postgres:5432
+    database: postgres
+    user: n8n
     secureJsonData:
-      basicAuthPassword: ${N8N_BASIC_AUTH_PASSWORD}
+      password: ${POSTGRES_PASSWORD}
+    jsonData:
+      sslmode: disable
+      postgresVersion: 1500
+      timescaledb: false
     isDefault: false
     editable: true
 
-  - name: File-Data-Source
-    type: grafana-simple-json-datasource
+  - name: n8n-Metrics-API
+    type: prometheus
     access: proxy
-    url: http://n8n:5678/webhook/file-data
+    url: http://n8n:5678/metrics
     isDefault: false
     editable: true
+    jsonData:
+      timeInterval: "30s"
+      httpMethod: GET

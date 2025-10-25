@@ -1,0 +1,88 @@
+{
+  "name": "Simple Data Collector",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "collector",
+        "options": {}
+      },
+      "id": "83c53aec-9842-4c8b-9c44-4b2e8b0efb65",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        240,
+        300
+      ],
+      "webhookId": "e8cc6d4a-4b24-4a9a-9f0d-8c9c9c9c9c9c"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO audit_logs (execution_id, workflow_name, status, records_processed) VALUES ('{{ $json.executionId || 'test-' + $now }}', 'data-collector', 'success', 1);",
+        "additionalFields": {}
+      },
+      "id": "f0e8c8a0-4d3c-4f8e-8c5a-9c9c9c9c9c9c",
+      "name": "Log to Database",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [
+        460,
+        300
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-default",
+          "name": "PostgreSQL Default"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ {\n  \"status\": \"success\",\n  \"message\": \"Data received and logged\",\n  \"executionId\": $json.executionId || 'test-' + $now,\n  \"timestamp\": $now,\n  \"data\": $json\n} }}"
+      },
+      "id": "a1b2c3d4-5e6f-7890-1234-567890abcdef",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        680,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Log to Database",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log to Database": {
+      "main": [
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {},
+  "versionId": "1",
+  "id": "simple-collector",
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "tags": []
+}

@@ -1,0 +1,65 @@
+{
+  "name": "Ultra Simple Collector",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "collector",
+        "responseMode": "responseNode"
+      },
+      "id": "webhook-collector",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [300, 200]
+    },
+    {
+      "parameters": {
+        "url": "https://api.github.com/zen",
+        "options": {}
+      },
+      "id": "test-api",
+      "name": "Test API Call",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [500, 200]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({\n  status: \"success\",\n  message: \"Collector working!\",\n  data: $json,\n  timestamp: new Date().toISOString()\n}) }}"
+      },
+      "id": "respond",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [700, 200]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Test API Call",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Test API Call": {
+      "main": [
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {}
+}

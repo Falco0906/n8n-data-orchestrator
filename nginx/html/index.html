@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>n8n Data Intelligence Orchestrator</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 0;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .container {
+            max-width: 800px;
+            padding: 2rem;
+            text-align: center;
+        }
+        .logo {
+            font-size: 3rem;
+            font-weight: bold;
+            margin-bottom: 1rem;
+            color: #fff;
+        }
+        .subtitle {
+            font-size: 1.2rem;
+            margin-bottom: 2rem;
+            opacity: 0.9;
+        }
+        .services {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1.5rem;
+            margin-top: 2rem;
+        }
+        .service-card {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            padding: 1.5rem;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            transition: transform 0.3s ease;
+        }
+        .service-card:hover {
+            transform: translateY(-5px);
+        }
+        .service-card h3 {
+            margin-top: 0;
+            color: #fff;
+        }
+        .service-card p {
+            opacity: 0.8;
+            margin-bottom: 1rem;
+        }
+        .service-link {
+            display: inline-block;
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            text-decoration: none;
+            padding: 0.5rem 1rem;
+            border-radius: 5px;
+            transition: background 0.3s ease;
+        }
+        .service-link:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+        .status {
+            margin-top: 2rem;
+            padding: 1rem;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 5px;
+        }
+        .health {
+            color: #4ade80;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo">🚀 n8n Data Orchestrator</div>
+        <div class="subtitle">Intelligent Data Pipeline & Workflow Automation Platform</div>
+        
+        <div class="services">
+            <div class="service-card">
+                <h3>🔄 Workflow Engine</h3>
+                <p>Design and execute automated data workflows with n8n's visual editor</p>
+                <a href="/workflows" class="service-link">Open n8n Editor</a>
+            </div>
+            
+            <div class="service-card">
+                <h3>📊 Analytics Dashboard</h3>
+                <p>Monitor data pipelines and visualize metrics with Grafana dashboards</p>
+                <a href="/grafana" class="service-link">View Dashboards</a>
+            </div>
+            
+            <div class="service-card">
+                <h3>🔌 API Endpoints</h3>
+                <p>Access webhook triggers and REST API for data integration</p>
+                <a href="/webhook" class="service-link">API Documentation</a>
+            </div>
+            
+            <div class="service-card">
+                <h3>⚡ Real-time Processing</h3>
+                <p>Stream processing with Redis caching and PostgreSQL persistence</p>
+                <a href="/metrics" class="service-link">System Metrics</a>
+            </div>
+        </div>
+        
+        <div class="status">
+            <h4>System Status: <span class="health">✅ All Services Running</span></h4>
+            <p>Data Collector → Validator → Processor → Reporter Pipeline Active</p>
+        </div>
+        
+        <div style="margin-top: 2rem; opacity: 0.7; font-size: 0.9rem;">
+            <p>🌟 Features: OpenWeather API, NewsAPI, ML Data Processing, Automated Reporting</p>
+            <p>🔧 Stack: n8n, PostgreSQL, Redis, Grafana, Nginx</p>
+        </div>
+    </div>
+</body>
+</html>

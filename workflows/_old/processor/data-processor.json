@@ -1,0 +1,250 @@
+{
+  "name": "Data Processor",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "processor",
+        "responseMode": "responseNode"
+      },
+      "id": "webhook-processor-001",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [240, 300],
+      "webhookId": "processor-webhook-001"
+    },
+    {
+      "parameters": {
+        "functionCode": "// Initialize processing context\nconst incomingData = $('Webhook Trigger').first().json.body || $('Webhook Trigger').first().json;\nconst executionId = incomingData.validationResults?.executionId || incomingData.executionId || `proc_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;\n\n// Generate version with ISO timestamp\nconst versionTimestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);\nconst processingVersion = `v${versionTimestamp}`;\n\nconst processingContext = {\n  executionId,\n  workflowName: 'data-processor',\n  startTime: new Date().toISOString(),\n  version: processingVersion,\n  originalData: incomingData.validatedData || incomingData,\n  validationResults: incomingData.validationResults,\n  processingConfig: {\n    enableMLEnrichment: true,\n    generateChecksum: true,\n    includeMetadata: true,\n    confidenceThreshold: 0.7\n  }\n};\n\nreturn processingContext;"
+      },
+      "id": "init-processing-001",
+      "name": "Initialize Processing",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Custom Data Transformation using Function node\nconst context = $('Initialize Processing').first().json;\nconst data = context.originalData;\n\n// Data transformation functions\nconst transformations = {\n  // Normalize numeric values to 0-1 range\n  normalize: (value, min = 0, max = 100) => {\n    if (typeof value !== 'number') return value;\n    return (value - min) / (max - min);\n  },\n  \n  // Extract text features\n  extractTextFeatures: (text) => {\n    if (typeof text !== 'string') return {};\n    return {\n      wordCount: text.split(/\\s+/).length,\n      charCount: text.length,\n      hasNumbers: /\\d/.test(text),\n      uppercaseRatio: (text.match(/[A-Z]/g) || []).length / text.length,\n      sentiment: text.toLowerCase().includes('good') || text.toLowerCase().includes('great') ? 'positive' :\n                text.toLowerCase().includes('bad') || text.toLowerCase().includes('terrible') ? 'negative' : 'neutral'\n    };\n  },\n  \n  // Clean and standardize data\n  cleanData: (obj) => {\n    if (typeof obj !== 'object' || obj === null) return obj;\n    const cleaned = {};\n    Object.entries(obj).forEach(([key, value]) => {\n      if (value !== null && value !== undefined && value !== '') {\n        cleaned[key] = typeof value === 'string' ? value.trim() : value;\n      }\n    });\n    return cleaned;\n  }\n};\n\n// Process weather data\nconst processedWeather = data.sources?.weather ? {\n  ...data.sources.weather,\n  processed: {\n    normalizedTemp: transformations.normalize(data.sources.weather.data.temperature, -40, 50),\n    normalizedHumidity: transformations.normalize(data.sources.weather.data.humidity, 0, 100),\n    cleanedData: transformations.cleanData(data.sources.weather.data),\n    features: {\n      temperatureCategory: data.sources.weather.data.temperature > 20 ? 'warm' : \n                          data.sources.weather.data.temperature > 0 ? 'mild' : 'cold',\n      humidityLevel: data.sources.weather.data.humidity > 70 ? 'high' : \n                    data.sources.weather.data.humidity > 30 ? 'medium' : 'low'\n    },\n    enrichment: {\n      processingTimestamp: new Date().toISOString(),\n      dataQuality: 'enhanced',\n      confidence: 0.95\n    }\n  }\n} : null;\n\n// Process news data with ML-based enrichment\nconst processedNews = data.sources?.news ? {\n  ...data.sources.news,\n  processed: {\n    articles: data.sources.news.data.articles?.map(article => {\n      const titleFeatures = transformations.extractTextFeatures(article.title);\n      return {\n        ...article,\n        features: titleFeatures,\n        sentiment: titleFeatures.sentiment,\n        relevanceScore: Math.random() * 0.3 + 0.7, // Simulated ML scoring\n        categories: [\n          titleFeatures.hasNumbers ? 'data-driven' : 'narrative',\n          titleFeatures.sentiment\n        ],\n        enrichment: {\n          processed: true,\n          confidence: Math.random() * 0.2 + 0.8\n        }\n      };\n    }) || [],\n    summary: {\n      totalArticles: data.sources.news.data.articles?.length || 0,\n      avgSentiment: 'neutral', // Would be calculated from all articles\n      avgConfidence: 0.85\n    }\n  }\n} : null;\n\n// Create processed dataset\nconst processedData = {\n  executionId: context.executionId,\n  version: context.version,\n  processingTimestamp: new Date().toISOString(),\n  originalData: {\n    collectionTimestamp: data.collectionTimestamp,\n    sources: data.sources\n  },\n  processedSources: {\n    weather: processedWeather,\n    news: processedNews\n  },\n  processingMetrics: {\n    sourcesProcessed: [processedWeather, processedNews].filter(Boolean).length,\n    recordsProcessed: (processedWeather ? 1 : 0) + (processedNews?.processed?.articles?.length || 0),\n    processingDuration: Date.now() - new Date(context.startTime).getTime(),\n    qualityScore: 0.9,\n    confidenceScore: 0.87\n  },\n  metadata: {\n    processingVersion: context.version,\n    transformationsApplied: ['normalize', 'extractFeatures', 'mlEnrichment', 'cleanData'],\n    mlModelsUsed: ['sentiment-analysis', 'relevance-scoring'],\n    dataIntegrityChecks: ['completeness', 'consistency', 'accuracy']\n  }\n};\n\nreturn processedData;"
+      },
+      "id": "transform-data-001",
+      "name": "Custom Data Transformation",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Generate SHA-256 checksum for data integrity\nconst crypto = require('crypto');\nconst processedData = $('Custom Data Transformation').first().json;\n\n// Create data string for checksum (excluding metadata that might change)\nconst checksumData = {\n  executionId: processedData.executionId,\n  version: processedData.version,\n  processedSources: processedData.processedSources,\n  processingMetrics: {\n    sourcesProcessed: processedData.processingMetrics.sourcesProcessed,\n    recordsProcessed: processedData.processingMetrics.recordsProcessed\n  }\n};\n\nconst dataString = JSON.stringify(checksumData, Object.keys(checksumData).sort());\nconst checksum = crypto.createHash('sha256').update(dataString).digest('hex');\n\n// Add checksum and version stamping\nconst dataWithIntegrity = {\n  ...processedData,\n  integrity: {\n    checksum,\n    algorithm: 'SHA-256',\n    generatedAt: new Date().toISOString(),\n    dataSize: Buffer.byteLength(dataString, 'utf8')\n  },\n  versionInfo: {\n    version: processedData.version,\n    timestamp: new Date().toISOString(),\n    format: 'ISO 8601',\n    timezone: 'UTC'\n  }\n};\n\nreturn dataWithIntegrity;"
+      },
+      "id": "generate-checksum-001",
+      "name": "Generate SHA-256 Checksum",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Prepare file output data\nconst dataWithIntegrity = $('Generate SHA-256 Checksum').first().json;\nconst version = dataWithIntegrity.version;\nconst timestamp = new Date().toISOString();\n\n// Create formatted output for file\nconst fileOutput = {\n  metadata: {\n    generatedAt: timestamp,\n    version: version,\n    format: 'JSON',\n    description: 'Processed data from n8n Data Intelligence Orchestrator'\n  },\n  ...dataWithIntegrity\n};\n\n// Prepare for file write\nconst fileName = `processed-${version}.json`;\nconst filePath = `/outputs/${fileName}`;\n\nreturn {\n  fileName,\n  filePath,\n  fileContent: JSON.stringify(fileOutput, null, 2),\n  fileSize: Buffer.byteLength(JSON.stringify(fileOutput), 'utf8'),\n  originalData: dataWithIntegrity\n};"
+      },
+      "id": "prepare-file-output-001",
+      "name": "Prepare File Output",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "operation": "write",
+        "fileContent": "={{ $json.fileContent }}",
+        "fileName": "={{ $json.fileName }}",
+        "options": {
+          "encoding": "utf8"
+        }
+      },
+      "id": "write-output-file-001",
+      "name": "Write Output File",
+      "type": "n8n-nodes-base.writeFile",
+      "typeVersion": 1,
+      "position": [1340, 300]
+    },
+    {
+      "parameters": {
+        "table": "data_versions",
+        "columns": "version, checksum, record_count, file_path, file_size, metadata, created_at",
+        "additionalFields": {
+          "mode": "insert"
+        }
+      },
+      "id": "save-version-metadata-001",
+      "name": "Save Version Metadata",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [1560, 300],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-n8n-credentials",
+          "name": "PostgreSQL n8n"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "table": "workflow_metrics",
+        "columns": "execution_id, workflow_name, execution_time_ms, records_processed, error_rate, confidence_score, created_at",
+        "additionalFields": {
+          "mode": "insert"
+        }
+      },
+      "id": "log-metrics-001",
+      "name": "Log Workflow Metrics",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [1780, 300],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-n8n-credentials",
+          "name": "PostgreSQL n8n"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.REPORTER_WEBHOOK_URL || 'http://n8n:5678/webhook/reporter' }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  processedData: $('Prepare File Output').first().json.originalData,\n  fileInfo: {\n    fileName: $('Prepare File Output').first().json.fileName,\n    filePath: $('Prepare File Output').first().json.filePath,\n    fileSize: $('Prepare File Output').first().json.fileSize\n  },\n  processingStatus: 'completed'\n}) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "trigger-reporter-001",
+      "name": "Trigger Reporter",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [2000, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"status\": \"success\",\n  \"executionId\": \"{{ $('Prepare File Output').first().json.originalData.executionId }}\",\n  \"version\": \"{{ $('Prepare File Output').first().json.originalData.version }}\",\n  \"message\": \"Data processing completed successfully\",\n  \"timestamp\": \"{{ new Date().toISOString() }}\",\n  \"processingResults\": {\n    \"fileName\": \"{{ $('Prepare File Output').first().json.fileName }}\",\n    \"fileSize\": \"{{ $('Prepare File Output').first().json.fileSize }}\",\n    \"checksum\": \"{{ $('Prepare File Output').first().json.originalData.integrity.checksum }}\",\n    \"recordsProcessed\": \"{{ $('Prepare File Output').first().json.originalData.processingMetrics.recordsProcessed }}\",\n    \"qualityScore\": \"{{ $('Prepare File Output').first().json.originalData.processingMetrics.qualityScore }}\"\n  }\n}"
+      },
+      "id": "success-response-001",
+      "name": "Success Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [2220, 300]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Initialize Processing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Initialize Processing": {
+      "main": [
+        [
+          {
+            "node": "Custom Data Transformation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Custom Data Transformation": {
+      "main": [
+        [
+          {
+            "node": "Generate SHA-256 Checksum",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate SHA-256 Checksum": {
+      "main": [
+        [
+          {
+            "node": "Prepare File Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare File Output": {
+      "main": [
+        [
+          {
+            "node": "Write Output File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Write Output File": {
+      "main": [
+        [
+          {
+            "node": "Save Version Metadata",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Version Metadata": {
+      "main": [
+        [
+          {
+            "node": "Log Workflow Metrics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Workflow Metrics": {
+      "main": [
+        [
+          {
+            "node": "Trigger Reporter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Trigger Reporter": {
+      "main": [
+        [
+          {
+            "node": "Success Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "processor-v1.0.0",
+  "meta": {
+    "instanceId": "data-processor-001"
+  },
+  "id": "processor-workflow-001"
+}

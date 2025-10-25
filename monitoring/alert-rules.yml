@@ -1,0 +1,191 @@
+groups:
+  - name: n8n_orchestrator_alerts
+    rules:
+      # n8n service availability
+      - alert: N8nServiceDown
+        expr: up{job="n8n"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: n8n
+        annotations:
+          summary: "n8n service is down"
+          description: "n8n workflow engine has been down for more than 1 minute"
+
+      # Database connectivity
+      - alert: PostgreSQLDown
+        expr: up{job="postgres"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: database
+        annotations:
+          summary: "PostgreSQL database is down"
+          description: "PostgreSQL database has been unreachable for more than 1 minute"
+
+      # Redis connectivity
+      - alert: RedisDown
+        expr: up{job="redis"} == 0
+        for: 1m
+        labels:
+          severity: warning
+          service: cache
+        annotations:
+          summary: "Redis cache is down"
+          description: "Redis cache service has been down for more than 1 minute"
+
+      # High CPU usage
+      - alert: HighCPUUsage
+        expr: 100 - (avg by(instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+        for: 5m
+        labels:
+          severity: warning
+          service: system
+        annotations:
+          summary: "High CPU usage detected"
+          description: "CPU usage is above 80% for more than 5 minutes on {{ $labels.instance }}"
+
+      # High memory usage
+      - alert: HighMemoryUsage
+        expr: (node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes) / node_memory_MemTotal_bytes * 100 > 85
+        for: 5m
+        labels:
+          severity: warning
+          service: system
+        annotations:
+          summary: "High memory usage detected"
+          description: "Memory usage is above 85% for more than 5 minutes on {{ $labels.instance }}"
+
+      # Low disk space
+      - alert: LowDiskSpace
+        expr: (node_filesystem_avail_bytes{mountpoint="/"} * 100) / node_filesystem_size_bytes{mountpoint="/"} < 10
+        for: 2m
+        labels:
+          severity: critical
+          service: system
+        annotations:
+          summary: "Low disk space"
+          description: "Disk space is below 10% on {{ $labels.instance }}"
+
+      # n8n workflow execution failures
+      - alert: WorkflowExecutionFailures
+        expr: increase(n8n_workflow_execution_failed_total[5m]) > 5
+        for: 1m
+        labels:
+          severity: warning
+          service: workflows
+        annotations:
+          summary: "High workflow execution failure rate"
+          description: "More than 5 workflow executions have failed in the last 5 minutes"
+
+      # Database connection pool exhaustion
+      - alert: DatabaseConnectionPoolHigh
+        expr: pg_stat_activity_count > 80
+        for: 2m
+        labels:
+          severity: warning
+          service: database
+        annotations:
+          summary: "High database connection count"
+          description: "PostgreSQL connection count is above 80 for more than 2 minutes"
+
+      # n8n queue length
+      - alert: HighQueueLength
+        expr: n8n_queue_waiting > 100
+        for: 5m
+        labels:
+          severity: warning
+          service: queue
+        annotations:
+          summary: "High n8n queue length"
+          description: "n8n execution queue has more than 100 waiting items for 5 minutes"
+
+      # API response time
+      - alert: HighAPIResponseTime
+        expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job="n8n"}[5m])) > 2
+        for: 3m
+        labels:
+          severity: warning
+          service: api
+        annotations:
+          summary: "High API response time"
+          description: "95th percentile API response time is above 2 seconds for 3 minutes"
+
+      # Grafana service down
+      - alert: GrafanaDown
+        expr: up{job="grafana"} == 0
+        for: 2m
+        labels:
+          severity: warning
+          service: monitoring
+        annotations:
+          summary: "Grafana monitoring is down"
+          description: "Grafana dashboard service has been down for more than 2 minutes"
+
+      # Data pipeline health
+      - alert: DataPipelineStale
+        expr: time() - n8n_last_successful_execution_timestamp > 3600
+        for: 1m
+        labels:
+          severity: critical
+          service: pipeline
+        annotations:
+          summary: "Data pipeline is stale"
+          description: "No successful data pipeline execution in the last hour"
+
+      # External API failures
+      - alert: ExternalAPIFailures
+        expr: increase(n8n_external_api_error_total[10m]) > 10
+        for: 2m
+        labels:
+          severity: warning
+          service: external_apis
+        annotations:
+          summary: "High external API failure rate"
+          description: "More than 10 external API calls have failed in the last 10 minutes"
+
+  - name: business_logic_alerts
+    rules:
+      # Data quality alerts
+      - alert: LowDataQuality
+        expr: avg_over_time(data_quality_score[30m]) < 0.8
+        for: 5m
+        labels:
+          severity: warning
+          service: data_quality
+        annotations:
+          summary: "Data quality degraded"
+          description: "Average data quality score has been below 80% for 30 minutes"
+
+      # Missing data alerts
+      - alert: NoDataReceived
+        expr: increase(data_records_processed_total[15m]) == 0
+        for: 15m
+        labels:
+          severity: critical
+          service: data_ingestion
+        annotations:
+          summary: "No data being processed"
+          description: "No data records have been processed in the last 15 minutes"
+
+      # Weather API quota
+      - alert: WeatherAPIQuotaLow
+        expr: weather_api_quota_remaining < 100
+        for: 1m
+        labels:
+          severity: warning
+          service: external_apis
+        annotations:
+          summary: "Weather API quota running low"
+          description: "Weather API quota has less than 100 requests remaining"
+
+      # News API quota
+      - alert: NewsAPIQuotaLow
+        expr: news_api_quota_remaining < 50
+        for: 1m
+        labels:
+          severity: warning
+          service: external_apis
+        annotations:
+          summary: "News API quota running low"
+          description: "News API quota has less than 50 requests remaining"

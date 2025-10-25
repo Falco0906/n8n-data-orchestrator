@@ -1,285 +1,265 @@
-# n8n Data Intelligence Orchestrator
+# 🏆 n8n Data Intelligence Orchestrator
+## MLOps Hackathon Project
 
-A containerized data automation system using n8n, Grafana, and supporting tools, optimized for Apple Silicon (arm64) compatibility.
+> A production-grade data pipeline system with automated collection, validation, processing, and reporting.
 
-## 🎯 Project Overview
+---
 
-This project implements a comprehensive data intelligence orchestrator with four independent processes:
+## 🎯 **Project Overview**
 
-1. **Collector**: Fetch data from public APIs or files
-2. **Validator**: Validate and clean incoming data  
-3. **Processor**: Transform or enrich data (includes custom nodes/scripts)
-4. **Reporter**: Generate reports and trigger Grafana visualization updates
+This project demonstrates **MLOps principles** through automated data workflows built with n8n. It features:
 
-## 🏗️ Architecture
+- **4 Separate Workflows** communicating via webhooks
+- **Automated Data Collection** from Weather & Bitcoin APIs
+- **Quality Validation** with scoring system
+- **Data Transformation** with enrichment
+- **Comprehensive Reporting** with insights
+- **Full Error Handling** with retries and alerts
+- **Complete Audit Trail** in PostgreSQL
+- **Live Dashboard** with Grafana
+- **Docker Deployment** - runs with single command
+
+---
+
+## 📁 **Project Structure**
 
 ```
-┌─────────────┐    ┌─────────────┐    ┌─────────────┐
-│  Collector  │───▶│  Validator  │───▶│  Processor  │
-└─────────────┘    └─────────────┘    └─────────────┘
-                                             │
-┌─────────────┐    ┌─────────────┐         ▼
-│   Grafana   │◄───│  Reporter   │    ┌─────────────┐
-└─────────────┘    └─────────────┘    │   Storage   │
-                                      └─────────────┘
+n8n-data-orchestrator/
+├── docker-compose.yml          # Complete Docker stack
+├── workflows/
+│   └── hackathon/
+│       ├── 1-collector-workflow.json    # Data collection
+│       ├── 2-validator-workflow.json    # Data validation
+│       ├── 3-processor-workflow.json    # Data processing
+│       └── 4-reporter-workflow.json     # Report generation
+├── grafana/
+│   ├── dashboards/             # Pre-built dashboards
+│   └── provisioning/           # Grafana config
+├── scripts/
+│   ├── backup.sh              # Database backup
+│   └── restore.sh             # Database restore
+└── HACKATHON_QUICKSTART.md    # Complete setup guide
 ```
 
-## 🚀 Quick Start
+---
 
-1. **Clone and setup**:
-   ```bash
-   cd n8n-data-orchestrator
-   ./start.sh
-   ```
+## ⚡ **Quick Start (15 minutes)**
 
-2. **Configure environment**:
-   - Edit `.env` file with secure passwords
-   - Update encryption keys and credentials
-
-3. **Start services**:
-   ```bash
-   docker compose up -d
-   ```
-
-## 🔧 Configuration
-
-### Environment Variables
-
-Copy `.env.example` to `.env` and customize:
-
+### 1. Start Docker Stack
 ```bash
-# Database
-POSTGRES_PASSWORD=your_secure_password
-REDIS_PASSWORD=your_redis_password
-
-# n8n Authentication  
-N8N_BASIC_AUTH_PASSWORD=your_n8n_password
-N8N_ENCRYPTION_KEY=your_32_char_encryption_key
-
-# Grafana
-GF_SECURITY_ADMIN_PASSWORD=your_grafana_password
+docker-compose up -d
 ```
 
-### Service Endpoints
+### 2. Access n8n
+Open http://localhost:5678 and create an admin account
 
-- **n8n Editor**: http://localhost:5678
-- **Grafana Dashboard**: http://localhost:3000  
-- **PostgreSQL**: localhost:5432
-- **Redis**: localhost:6379 (internal)
+### 3. Import Workflows
+Import all 4 workflows from `workflows/hackathon/` directory
 
-## 📁 Directory Structure
+### 4. Configure Credentials
+- **PostgreSQL:** Host: `postgres`, User: `n8n`, Pass: `n8n_password`
+- **Email:** Configure Gmail SMTP for alerts
 
-```
-├── docker-compose.yml          # Main orchestration file
-├── .env.example               # Environment template
-├── start.sh                   # Quick start script
-├── data/                      # Persistent data volumes
-│   ├── postgres/             # Database data
-│   ├── redis/                # Cache data  
-│   ├── n8n/                  # n8n workflows & settings
-│   └── grafana/              # Grafana data
-├── workflows/                 # n8n workflow exports
-├── custom-nodes/             # Custom n8n nodes
-├── outputs/                  # Processing outputs
-│   ├── collector/
-│   ├── validator/
-│   ├── processor/
-│   └── reporter/
-├── logs/                     # Centralized logging
-├── grafana/                  # Grafana configuration
-│   ├── provisioning/         # Datasources & dashboards
-│   └── dashboards/           # Dashboard definitions
-└── nginx/                    # Reverse proxy config
-```
-
-## 🔄 Workflow Communication
-
-Workflows communicate via:
-
-- **Webhooks**: HTTP triggers between processes
-- **Database**: Shared PostgreSQL for state management
-- **File System**: Shared volumes for data exchange
-- **Redis**: Caching and temporary data
-
-### Example Workflow Chain
-
-1. **Collector** → HTTP webhook → **Validator**
-2. **Validator** → Database trigger → **Processor**  
-3. **Processor** → File output → **Reporter**
-4. **Reporter** → Grafana API → Dashboard update
-
-## 📊 Monitoring & Alerting
-
-### Grafana Dashboards
-
-- **Overview**: System health and workflow status
-- **Data Pipeline**: Processing metrics and throughput
-- **Error Tracking**: Failed executions and alerts
-
-### Alert Channels
-
-Configure in `.env`:
-- **Email**: SMTP integration
-- **Slack**: Webhook notifications
-- **Discord**: Bot integration
-
-## 🛠️ Development
-
-### Custom Nodes
-
-Place custom nodes in `./custom-nodes/`:
-
-```javascript
-// example-custom-node.js
-module.exports = {
-  description: {
-    displayName: 'Custom Data Processor',
-    name: 'customDataProcessor',
-    group: ['transform'],
-    // ... node definition
-  },
-  async execute() {
-    // Custom logic here
-  }
-};
-```
-
-### Testing Workflows
-
-Use the included test script:
-
+### 5. Test Pipeline
 ```bash
-# Test collector endpoint
-curl -X POST http://localhost:5678/webhook/test-collector \
+curl -X POST http://localhost:5678/webhook/collect-data \
   -H "Content-Type: application/json" \
-  -d '{"test": "data"}'
+  -d '{"location": "London"}'
 ```
 
-## 🐳 Docker Profiles
+**📖 Full instructions in:** `HACKATHON_QUICKSTART.md`
 
-### Development (default)
+---
+
+## 🏗️ **Architecture**
+
+```
+┌─────────────┐      ┌─────────────┐      ┌─────────────┐      ┌─────────────┐
+│  Collector  │ ───> │  Validator  │ ───> │  Processor  │ ───> │  Reporter   │
+│   Workflow  │      │   Workflow  │      │   Workflow  │      │   Workflow  │
+└─────────────┘      └─────────────┘      └─────────────┘      └─────────────┘
+      │                     │                     │                     │
+      └─────────────────────┴─────────────────────┴─────────────────────┘
+                                      │
+                            ┌─────────┴─────────┐
+                            │                   │
+                      ┌─────▼─────┐      ┌─────▼─────┐
+                      │ PostgreSQL │      │  Grafana  │
+                      │ Audit Logs │      │ Dashboard │
+                      └───────────┘      └───────────┘
+```
+
+### Workflow Communication:
+1. **Collector** fetches data from APIs → sends to Validator via webhook
+2. **Validator** validates quality → sends valid data to Processor
+3. **Processor** transforms & enriches → sends to Reporter
+4. **Reporter** generates insights & saves reports
+
+---
+
+## ✅ **Hackathon Requirements**
+
+| Requirement | Status | Implementation |
+|------------|--------|----------------|
+| 4 Connected Workflows | ✅ | Collector → Validator → Processor → Reporter |
+| Webhook Communication | ✅ | Each workflow triggers next via webhook |
+| Retry Mechanism | ✅ | 3 retries with 5s delay on all API calls |
+| Alert System | ✅ | Email alerts for failures |
+| Versioned Outputs | ✅ | Unique version ID per execution |
+| Audit Logs | ✅ | Complete trail in PostgreSQL |
+| Custom Transformation | ✅ | Advanced JavaScript in each stage |
+| Live Dashboard | ✅ | Grafana + QuickChart |
+| Docker Deployment | ✅ | `docker-compose up` - single command |
+
+---
+
+## 🧪 **Judge Test Scenarios**
+
+### TEST 1: API Failure & Retry
 ```bash
-docker compose up -d
+# Edit collector workflow → Change API key to "invalid"
+# Trigger pipeline → System retries 3x → Email alert sent
 ```
 
-### Production
+### TEST 2: Validation Failure
 ```bash
-docker compose --profile production up -d
+curl -X POST http://localhost:5678/webhook/collect-data \
+  -H "Content-Type: application/json" \
+  -d '{"invalid": "data"}'
+# Invalid data blocked → Email alert sent
 ```
-Includes:
-- Nginx reverse proxy
-- SSL termination
-- Rate limiting
 
-### Logging
+### TEST 3: Version Tracking
 ```bash
-docker compose --profile logging up -d  
+# Run pipeline twice → Check PostgreSQL for different versions
+docker exec -it n8n_postgres psql -U n8n -d n8n
+SELECT execution_id, version, stage FROM audit_logs ORDER BY timestamp DESC;
 ```
-Includes:
-- Log rotation
-- Centralized logging
-- Log aggregation
 
-## 🔒 Security Features
+### TEST 4: Clean Deployment
+```bash
+docker-compose down -v
+docker-compose up -d
+# All services start successfully
+```
 
-- **Authentication**: Basic auth for n8n, admin accounts for Grafana
-- **Encryption**: Encrypted credential storage
-- **Network Isolation**: Internal Docker network
-- **Rate Limiting**: Nginx-based request limiting
-- **Secure Headers**: XSS protection, content type validation
+---
 
-## 📈 Performance Optimization
+## 📊 **Expected Metrics**
 
-- **Redis Caching**: Session and queue management
-- **Connection Pooling**: PostgreSQL optimization
-- **Log Rotation**: Automated cleanup
-- **Health Checks**: Service monitoring
-- **Queue Processing**: Background execution
+- **Pipeline Execution:** 2-4 seconds
+- **Validation Pass Rate:** 95-100%
+- **API Success Rate:** 98%+ (with retries)
+- **Data Quality Score:** 90-100%
+- **Workflow Latency:** <500ms per hop
 
-## 🚨 Troubleshooting
+---
 
-### Common Issues
+## 🎤 **Demo Script**
 
-1. **Permission Errors**:
-   ```bash
-   sudo chown -R $USER:$USER data/
-   chmod -R 755 data/
-   ```
+### 1. Show Architecture (1 min)
+"We have 4 workflows that communicate via webhooks, each handling a specific stage of the data pipeline."
 
-2. **Database Connection**:
-   ```bash
-   docker compose logs postgres
-   docker compose exec postgres pg_isready
-   ```
+### 2. Live Trigger (2 min)
+```bash
+docker ps  # Show all services running
+curl -X POST http://localhost:5678/webhook/collect-data \
+  -d '{"location": "Paris"}'
+```
+Show n8n executions → All 4 workflows ran successfully
 
-3. **Port Conflicts**:
-   ```bash
-   # Check what's using ports 5678, 3000
-   lsof -i :5678
-   lsof -i :3000
-   ```
+### 3. View Results (1 min)
+- n8n: Execution history
+- Grafana: Dashboard visualization
+- PostgreSQL: Audit trail
 
-### Logs
+### 4. Test Error Handling (1 min)
+Demonstrate retry mechanism and validation alerts
+
+---
+
+## 🔧 **Tech Stack**
+
+- **Workflow Engine:** n8n (v1.0+)
+- **Database:** PostgreSQL 13
+- **Cache:** Redis 7
+- **Monitoring:** Grafana 9
+- **Container:** Docker & Docker Compose
+- **APIs:** OpenWeather, CoinDesk
+
+---
+
+## 📚 **Documentation**
+
+- **`HACKATHON_QUICKSTART.md`** - Complete 15-minute setup guide
+- **`HACKATHON_DEPLOYMENT.md`** - Detailed deployment instructions
+- **`HACKATHON_SPEEDRUN.md`** - Fast-track guide
+
+---
+
+## 🚀 **Key Features**
+
+### 1. Data Collection
+- Multi-source API integration
+- Automatic retry on failures
+- Error logging and alerting
+- Version tracking
+
+### 2. Data Validation
+- Quality scoring (0-100)
+- Multi-level validation rules
+- Invalid data blocking
+- Detailed error reporting
+
+### 3. Data Processing
+- Advanced transformations
+- Data enrichment with derived metrics
+- Comfort index, sentiment analysis
+- Performance tracking
+
+### 4. Reporting
+- Comprehensive insights
+- Executive summary
+- Quality metrics
+- Performance analytics
+- Saved JSON reports
+
+---
+
+## 🏆 **Winning Points**
+
+1. ✅ **Production-Ready:** Full error handling, retries, comprehensive alerts
+2. ✅ **Scalable Architecture:** Modular workflows, easy to extend with new sources
+3. ✅ **Data Quality Focus:** Advanced validation with scoring and grading
+4. ✅ **Complete Observability:** Audit logs, Grafana dashboards, real-time monitoring
+5. ✅ **Clean Deployment:** Single command setup, well-documented
+6. ✅ **MLOps Principles:** Versioning, monitoring, automation, reproducibility
+
+---
+
+## 🎯 **Quick Commands**
 
 ```bash
-# View all logs
-docker compose logs -f
+# Start everything
+docker-compose up -d
 
-# Specific service logs  
-docker compose logs -f n8n
-docker compose logs -f grafana
+# View logs
+docker-compose logs -f n8n
+
+# Stop everything
+docker-compose down
+
+# Clean restart
+docker-compose down -v && docker-compose up -d
+
+# Backup database
+./scripts/backup.sh
+
+# Check status
+docker ps
+curl http://localhost:5678/webhook/collect-data -X POST -d '{"test": true}'
 ```
 
-## 🧪 Testing
+---
 
-### Health Checks
-
-All services include health checks:
-```bash
-docker compose ps
-```
-
-### API Testing
-
-Test workflow endpoints:
-```bash
-# Test n8n webhook
-curl http://localhost:5678/webhook/health
-
-# Test Grafana API
-curl http://admin:password@localhost:3000/api/health
-```
-
-## 📝 Production Deployment
-
-1. **Update environment variables** for production
-2. **Configure SSL certificates** in `nginx/ssl/`
-3. **Set up external database** (optional)
-4. **Configure backup strategy** for volumes
-5. **Set up monitoring alerts**
-
-### Backup Strategy
-
-```bash
-# Backup volumes
-docker run --rm -v n8n-data-orchestrator_postgres_data:/data \
-  -v $(pwd)/backups:/backup alpine \
-  tar czf /backup/postgres-$(date +%Y%m%d).tar.gz /data
-```
-
-## 📞 Support
-
-For issues and contributions:
-- Check logs first: `docker compose logs -f`
-- Review environment configuration
-- Verify network connectivity between services
-
-## 🔄 Updates
-
-```bash
-# Update images
-docker compose pull
-
-# Restart with new images  
-docker compose up -d --force-recreate
-```
+**🏆 Ready to win the hackathon! Good luck!** 🎉

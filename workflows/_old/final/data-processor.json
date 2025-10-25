@@ -1,0 +1,122 @@
+{
+  "name": "Data Processor",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "processor"
+      },
+      "id": "webhook-processor",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [200, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO data_versions (version_id, execution_id, data_size, checksum) VALUES ('{{ $json.version }}', '{{ $json.executionId }}', {{ JSON.stringify($json).length }}, 'sha256:' || md5('{{ JSON.stringify($json) }}'))"
+      },
+      "id": "save-version",
+      "name": "Save Data Version",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [400, 300],
+      "credentials": {
+        "postgres": {
+          "id": "postgres_db",
+          "name": "PostgreSQL Database"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE processed_data SET enriched_data = '{{ JSON.stringify({\n  \"ml_features\": {\n    \"temperature_category\": ($json.sources.weather.data.main ? ($json.sources.weather.data.main.temp > 20 ? \"warm\" : \"cool\") : \"unknown\"),\n    \"news_sentiment\": \"neutral\",\n    \"data_freshness\": \"high\"\n  },\n  \"processing_metadata\": {\n    \"processed_at\": new Date().toISOString(),\n    \"processor_version\": \"v1.0\",\n    \"enrichment_applied\": true\n  }\n}) }}' WHERE execution_id = '{{ $json.executionId }}'"
+      },
+      "id": "enrich-data",
+      "name": "Enrich Data",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [600, 300],
+      "credentials": {
+        "postgres": {
+          "id": "postgres_db",
+          "name": "PostgreSQL Database"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "http://localhost:5678/webhook/reporter",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n  \"executionId\": $json.executionId,\n  \"version\": $json.version,\n  \"processedData\": {\n    \"sources\": $json.sources,\n    \"enrichment\": {\n      \"ml_features\": {\n        \"temperature_category\": ($json.sources.weather.data.main ? ($json.sources.weather.data.main.temp > 20 ? \"warm\" : \"cool\") : \"unknown\"),\n        \"news_sentiment\": \"neutral\",\n        \"data_freshness\": \"high\"\n      },\n      \"processing_metadata\": {\n        \"processed_at\": new Date().toISOString(),\n        \"processor_version\": \"v1.0\",\n        \"enrichment_applied\": true\n      }\n    }\n  },\n  \"summary\": {\n    \"totalRecords\": $json.summary.totalRecords,\n    \"processingDuration\": 800,\n    \"enrichmentApplied\": true,\n    \"dataQuality\": \"high\"\n  }\n} }}"
+      },
+      "id": "send-to-reporter",
+      "name": "Send to Reporter",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [800, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ {\n  \"status\": \"success\",\n  \"message\": \"Data processing completed\",\n  \"processingResult\": {\n    \"version\": $json.version,\n    \"enrichmentApplied\": true,\n    \"dataQuality\": \"high\",\n    \"recordsProcessed\": $json.summary.totalRecords,\n    \"processingDuration\": \"800ms\"\n  },\n  \"nextStep\": \"reporting\",\n  \"timestamp\": new Date().toISOString()\n} }}"
+      },
+      "id": "respond-success",
+      "name": "Respond Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1000, 300]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Save Data Version",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Data Version": {
+      "main": [
+        [
+          {
+            "node": "Enrich Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enrich Data": {
+      "main": [
+        [
+          {
+            "node": "Send to Reporter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send to Reporter": {
+      "main": [
+        [
+          {
+            "node": "Respond Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {}
+}

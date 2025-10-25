@@ -1,0 +1,293 @@
+{
+  "name": "1. Data Collector",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "collect-data",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "webhookId": "collector-webhook"
+    },
+    {
+      "parameters": {
+        "url": "https://api.openweathermap.org/data/2.5/weather",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "={{ $json.location || 'London' }},UK"
+            },
+            {
+              "name": "appid",
+              "value": "afac250c8cec80ff4e283d88d0f0b794"
+            },
+            {
+              "name": "units",
+              "value": "metric"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "weather-collector",
+      "name": "Collect Weather Data",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [460, 200],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "url": "https://api.coindesk.com/v1/bpi/currentprice.json",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "bitcoin-collector",
+      "name": "Collect Bitcoin Price",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [460, 400],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// COLLECTION STAGE - Merge and version all collected data\nconst items = $input.all();\nconst timestamp = new Date().toISOString();\nconst executionId = $execution.id;\nconst version = `v${new Date().toISOString().split('T')[0]}_${Date.now()}`;\n\nconst collectedData = [];\nlet successCount = 0;\nlet failCount = 0;\n\n// Process each collected item\nfor (let i = 0; i < items.length; i++) {\n  const item = items[i];\n  const data = item.json;\n  let source = 'unknown';\n  let status = 'success';\n  \n  // Identify source based on data structure\n  if (data.bpi) {\n    source = 'bitcoin';\n    successCount++;\n  } else if (data.main && data.weather) {\n    source = 'weather';\n    successCount++;\n  } else if (data.error || data.message) {\n    source = data.source || 'unknown';\n    status = 'failed';\n    failCount++;\n  }\n  \n  collectedData.push({\n    json: {\n      // Metadata\n      record_id: `${source}_${executionId}_${i}`,\n      execution_id: executionId,\n      version: version,\n      source: source,\n      \n      // Timestamps\n      collected_at: timestamp,\n      collection_stage: 'completed',\n      \n      // Status\n      collection_status: status,\n      \n      // Raw data\n      raw_data: data,\n      \n      // Collection metrics\n      retry_count: item.retryCount || 0,\n      data_size_bytes: JSON.stringify(data).length\n    }\n  });\n}\n\n// Add collection summary as first item\nconst summary = {\n  json: {\n    record_id: `summary_${executionId}`,\n    execution_id: executionId,\n    version: version,\n    source: 'collection_summary',\n    collected_at: timestamp,\n    collection_stage: 'summary',\n    collection_status: 'completed',\n    \n    summary: {\n      total_sources: items.length,\n      successful_collections: successCount,\n      failed_collections: failCount,\n      success_rate: Math.round((successCount / items.length) * 100),\n      collection_duration_ms: Date.now() - new Date(timestamp).getTime()\n    }\n  }\n};\n\ncollectedData.unshift(summary);\n\nreturn collectedData;"
+      },
+      "id": "merge-version",
+      "name": "Merge & Version Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://n8n:5678/webhook/validate-data",
+        "sendBody": true,
+        "contentType": "application/json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "send-to-validator",
+      "name": "Send to Validator",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [900, 300],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ {\n  \"status\": \"success\",\n  \"stage\": \"collector\",\n  \"execution_id\": $('Merge & Version Data').first().json.execution_id,\n  \"version\": $('Merge & Version Data').first().json.version,\n  \"collected_items\": $('Merge & Version Data').all().length,\n  \"next_stage\": \"validator\",\n  \"timestamp\": $now.toISO()\n} }}",
+        "options": {}
+      },
+      "id": "respond-webhook",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ERROR HANDLER - Log collection failures\nconst errors = [];\n\nfor (const item of $input.all()) {\n  const error = item.json;\n  \n  errors.push({\n    json: {\n      error_stage: 'collection',\n      error_type: 'api_failure',\n      error_message: error.message || error.error || 'Collection failed',\n      error_timestamp: new Date().toISOString(),\n      severity: 'high',\n      source: error.source || 'unknown',\n      retry_attempted: true,\n      max_retries_reached: true\n    }\n  });\n}\n\nreturn errors;"
+      },
+      "id": "error-handler",
+      "name": "Error Handler",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 500]
+    },
+    {
+      "parameters": {
+        "fromEmail": "faisal96kp@gmail.com",
+        "toEmail": "faisal96kp@gmail.com",
+        "subject": "=🚨 Collection Error - {{ $json.error_timestamp }}",
+        "emailType": "html",
+        "message": "=<html><body style=\"font-family: Arial, sans-serif; padding: 20px;\"><div style=\"background: #ffebee; border-left: 4px solid #f44336; padding: 15px; margin: 20px 0;\"><h2 style=\"color: #c62828; margin-top: 0;\">🚨 Data Collection Failed</h2><table style=\"width: 100%; border-collapse: collapse;\"><tr><td style=\"padding: 8px; border-bottom: 1px solid #ddd;\"><strong>Stage:</strong></td><td style=\"padding: 8px; border-bottom: 1px solid #ddd;\">{{ $json.error_stage }}</td></tr><tr><td style=\"padding: 8px; border-bottom: 1px solid #ddd;\"><strong>Type:</strong></td><td style=\"padding: 8px; border-bottom: 1px solid #ddd;\">{{ $json.error_type }}</td></tr><tr><td style=\"padding: 8px; border-bottom: 1px solid #ddd;\"><strong>Message:</strong></td><td style=\"padding: 8px; border-bottom: 1px solid #ddd;\">{{ $json.error_message }}</td></tr><tr><td style=\"padding: 8px; border-bottom: 1px solid #ddd;\"><strong>Source:</strong></td><td style=\"padding: 8px; border-bottom: 1px solid #ddd;\">{{ $json.source }}</td></tr><tr><td style=\"padding: 8px; border-bottom: 1px solid #ddd;\"><strong>Time:</strong></td><td style=\"padding: 8px; border-bottom: 1px solid #ddd;\">{{ $json.error_timestamp }}</td></tr><tr><td style=\"padding: 8px; border-bottom: 1px solid #ddd;\"><strong>Severity:</strong></td><td style=\"padding: 8px; border-bottom: 1px solid #ddd; color: #f44336;\">{{ $json.severity.toUpperCase() }}</td></tr></table><p style=\"margin-top: 20px; color: #666;\">System attempted automatic retry but max retries reached.</p></div></body></html>",
+        "options": {}
+      },
+      "id": "email-alert",
+      "name": "Send Alert Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [900, 500],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Filter out summary items and prepare data for logging\nconst items = $input.all();\nconst loggableItems = [];\n\nfor (const item of items) {\n  const data = item.json;\n  \n  // Skip summary items\n  if (data.source === 'collection_summary' || data.collection_stage === 'summary') {\n    continue;\n  }\n  \n  // Only log items with execution_id and version\n  if (data.execution_id && data.version) {\n    loggableItems.push({\n      json: {\n        log_timestamp: data.collected_at || new Date().toISOString(),\n        execution_id: data.execution_id,\n        version: data.version,\n        stage: 'collection',\n        status: data.collection_status || 'completed',\n        source: data.source || 'collector',\n        data: JSON.stringify(data)\n      }\n    });\n  }\n}\n\nreturn loggableItems;"
+      },
+      "id": "prepare-log-data",
+      "name": "Prepare Log Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 100]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO audit_logs (timestamp, execution_id, version, stage, status, source, data) VALUES ('{{ $json.log_timestamp }}', '{{ $json.execution_id }}', '{{ $json.version }}', '{{ $json.stage }}', '{{ $json.status }}', '{{ $json.source }}', '{{ $json.data }}');",
+        "options": {}
+      },
+      "id": "log-to-db",
+      "name": "Log to PostgreSQL",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [1100, 100],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-cred",
+          "name": "PostgreSQL"
+        }
+      },
+      "continueOnFail": false
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Collect Weather Data",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Collect Bitcoin Price",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Collect Weather Data": {
+      "main": [
+        [
+          {
+            "node": "Merge & Version Data",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Error Handler",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Collect Bitcoin Price": {
+      "main": [
+        [
+          {
+            "node": "Merge & Version Data",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Error Handler",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge & Version Data": {
+      "main": [
+        [
+          {
+            "node": "Send to Validator",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Prepare Log Data",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Log Data": {
+      "main": [
+        [
+          {
+            "node": "Log to PostgreSQL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send to Validator": {
+      "main": [
+        []
+      ]
+    },
+    "Error Handler": {
+      "main": [
+        [
+          {
+            "node": "Send Alert Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "any",
+    "errorWorkflow": ""
+  },
+  "versionId": "1.0",
+  "id": "collector-workflow-hackathon",
+  "meta": {
+    "instanceId": "hackathon-n8n"
+  },
+  "tags": [
+    {
+      "name": "hackathon",
+      "id": "1"
+    },
+    {
+      "name": "collector",
+      "id": "2"
+    }
+  ]
+}

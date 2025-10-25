@@ -1,0 +1,200 @@
+{
+  "name": "2. Data Validator",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "validate-data",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook from Collector",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "webhookId": "validator-webhook"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse incoming data - webhook body is already JSON\nreturn $input.all();"
+      },
+      "id": "parse-input",
+      "name": "Parse Input Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// VALIDATION STAGE - Comprehensive data validation\nconst items = $input.all();\nconst validatedItems = [];\nconst validationErrors = [];\n\nfor (const item of items) {\n  const data = item.json;\n  \n  // Skip summary items\n  if (data.source === 'collection_summary') {\n    validatedItems.push({ json: { ...data, validation_stage: 'skipped' } });\n    continue;\n  }\n  \n  let isValid = true;\n  const validationIssues = [];\n  let qualityScore = 100;\n  \n  // REQUIRED FIELD VALIDATIONS\n  if (!data.record_id) {\n    isValid = false;\n    qualityScore -= 30;\n    validationIssues.push('Missing record_id');\n  }\n  \n  if (!data.execution_id) {\n    isValid = false;\n    qualityScore -= 25;\n    validationIssues.push('Missing execution_id');\n  }\n  \n  if (!data.version) {\n    isValid = false;\n    qualityScore -= 20;\n    validationIssues.push('Missing version');\n  }\n  \n  if (!data.collected_at) {\n    isValid = false;\n    qualityScore -= 20;\n    validationIssues.push('Missing timestamp');\n  }\n  \n  if (!data.source || data.source === 'unknown') {\n    qualityScore -= 15;\n    validationIssues.push('Unknown or missing data source');\n  }\n  \n  if (!data.raw_data || Object.keys(data.raw_data).length === 0) {\n    isValid = false;\n    qualityScore -= 40;\n    validationIssues.push('Empty or missing raw data');\n  }\n  \n  // DATA-SPECIFIC VALIDATIONS\n  if (data.source === 'weather' && data.raw_data) {\n    if (!data.raw_data.main || !data.raw_data.main.temp) {\n      isValid = false;\n      qualityScore -= 30;\n      validationIssues.push('Weather data missing temperature');\n    }\n    \n    if (data.raw_data.main && data.raw_data.main.temp) {\n      const temp = data.raw_data.main.temp;\n      if (temp < -50 || temp > 60) {\n        qualityScore -= 25;\n        validationIssues.push(`Temperature out of realistic range: ${temp}°C`);\n      }\n    }\n    \n    if (!data.raw_data.weather || data.raw_data.weather.length === 0) {\n      qualityScore -= 15;\n      validationIssues.push('Weather condition data missing');\n    }\n  }\n  \n  if (data.source === 'bitcoin' && data.raw_data) {\n    if (!data.raw_data.bpi || !data.raw_data.bpi.USD) {\n      isValid = false;\n      qualityScore -= 30;\n      validationIssues.push('Bitcoin price data missing');\n    }\n    \n    if (data.raw_data.bpi && data.raw_data.bpi.USD) {\n      const rate = parseFloat(data.raw_data.bpi.USD.rate.replace(/,/g, ''));\n      if (rate <= 0 || rate > 1000000) {\n        qualityScore -= 25;\n        validationIssues.push(`Bitcoin rate out of range: $${rate}`);\n      }\n    }\n  }\n  \n  // QUALITY SCORE THRESHOLDS\n  if (qualityScore < 50) {\n    isValid = false;\n    validationIssues.push('Quality score below minimum threshold (50)');\n  }\n  \n  // Create validated item\n  const validatedItem = {\n    ...data,\n    validation_stage: 'completed',\n    validation_timestamp: new Date().toISOString(),\n    validation_status: isValid ? 'passed' : 'failed',\n    validation_score: Math.max(0, qualityScore),\n    validation_grade: qualityScore >= 90 ? 'A' : qualityScore >= 80 ? 'B' : qualityScore >= 70 ? 'C' : qualityScore >= 60 ? 'D' : 'F',\n    validation_issues: validationIssues,\n    is_valid: isValid,\n    validation_rules_version: 'v2.0'\n  };\n  \n  if (isValid) {\n    validatedItems.push({ json: validatedItem });\n  } else {\n    validationErrors.push({\n      json: {\n        ...validatedItem,\n        error_type: 'validation_failed',\n        error_severity: qualityScore < 30 ? 'critical' : qualityScore < 50 ? 'high' : 'medium',\n        error_count: validationIssues.length\n      }\n    });\n  }\n}\n\n// Add validation summary\nconst summary = {\n  json: {\n    record_id: `validation_summary_${Date.now()}`,\n    validation_stage: 'summary',\n    validation_timestamp: new Date().toISOString(),\n    summary: {\n      total_items_validated: items.length,\n      valid_items: validatedItems.length,\n      invalid_items: validationErrors.length,\n      validation_pass_rate: Math.round((validatedItems.length / items.length) * 100),\n      average_quality_score: validatedItems.length > 0 ? \n        Math.round(validatedItems.reduce((sum, item) => sum + item.json.validation_score, 0) / validatedItems.length) : 0\n    }\n  }\n};\n\nvalidatedItems.push(summary);\n\n// Return all validated items (errors will be handled by the error output path)\nreturn validatedItems;"
+      },
+      "id": "validate-data",
+      "name": "Validate Data Quality",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://n8n:5678/webhook/process-data",
+        "sendBody": true,
+        "contentType": "application/json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "send-to-processor",
+      "name": "Send to Processor",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [900, 300],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ {\n  \"status\": \"success\",\n  \"stage\": \"validator\",\n  \"execution_id\": $('Parse Input Data').first().json.execution_id,\n  \"validation_summary\": $('Validate Data Quality').last().json.summary,\n  \"next_stage\": \"processor\",\n  \"timestamp\": $now.toISO()\n} }}",
+        "options": {}
+      },
+      "id": "respond-webhook",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "fromEmail": "faisal96kp@gmail.com",
+        "toEmail": "faisal96kp@gmail.com",
+        "subject": "=⚠️ Validation Error - {{ $json.validation_timestamp }}",
+        "emailType": "html",
+        "message": "=<html><body style=\"font-family: Arial, sans-serif; padding: 20px;\"><div style=\"background: #fff3e0; border-left: 4px solid #ff9800; padding: 15px; margin: 20px 0;\"><h2 style=\"color: #e65100; margin-top: 0;\">⚠️ Data Validation Failed</h2><table style=\"width: 100%; border-collapse: collapse;\"><tr><td style=\"padding: 8px; border-bottom: 1px solid #ddd;\"><strong>Record ID:</strong></td><td style=\"padding: 8px; border-bottom: 1px solid #ddd;\">{{ $json.record_id }}</td></tr><tr><td style=\"padding: 8px; border-bottom: 1px solid #ddd;\"><strong>Source:</strong></td><td style=\"padding: 8px; border-bottom: 1px solid #ddd;\">{{ $json.source }}</td></tr><tr><td style=\"padding: 8px; border-bottom: 1px solid #ddd;\"><strong>Quality Score:</strong></td><td style=\"padding: 8px; border-bottom: 1px solid #ddd;\">{{ $json.validation_score }}/100 (Grade: {{ $json.validation_grade }})</td></tr><tr><td style=\"padding: 8px; border-bottom: 1px solid #ddd;\"><strong>Severity:</strong></td><td style=\"padding: 8px; border-bottom: 1px solid #ddd; color: #f44336;\">{{ $json.error_severity.toUpperCase() }}</td></tr><tr><td style=\"padding: 8px; border-bottom: 1px solid #ddd;\"><strong>Time:</strong></td><td style=\"padding: 8px; border-bottom: 1px solid #ddd;\">{{ $json.validation_timestamp }}</td></tr></table><h3 style=\"color: #e65100;\">Validation Issues ({{ $json.error_count }}):</h3><ul>{{ $json.validation_issues.map(issue => '<li>' + issue + '</li>').join('') }}</ul><p style=\"margin-top: 20px; color: #666; font-style: italic;\">This record was blocked from further processing.</p></div></body></html>",
+        "options": {}
+      },
+      "id": "email-alert",
+      "name": "Send Validation Errors",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [900, 500],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Filter out summary items and prepare data for logging\nconst items = $input.all();\nconst loggableItems = [];\n\nfor (const item of items) {\n  const data = item.json;\n  \n  // Skip summary items and items without required fields\n  if (data.validation_stage === 'summary' || data.validation_stage === 'skipped') {\n    continue;\n  }\n  \n  // Only log items with execution_id and version\n  if (data.execution_id && data.version) {\n    loggableItems.push({\n      json: {\n        log_timestamp: data.validation_timestamp || new Date().toISOString(),\n        execution_id: data.execution_id,\n        version: data.version,\n        stage: 'validation',\n        status: data.validation_status || 'completed',\n        source: data.source || 'validator',\n        data: JSON.stringify(data),\n        quality_score: data.validation_score || 0,\n        validation_issues: JSON.stringify(data.validation_issues || [])\n      }\n    });\n  }\n}\n\nreturn loggableItems;"
+      },
+      "id": "prepare-log-data",
+      "name": "Prepare Log Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 100]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO audit_logs (timestamp, execution_id, version, stage, status, source, data, quality_score, validation_issues) VALUES ('{{ $json.log_timestamp }}', '{{ $json.execution_id }}', '{{ $json.version }}', '{{ $json.stage }}', '{{ $json.status }}', '{{ $json.source }}', '{{ $json.data }}', {{ $json.quality_score }}, '{{ $json.validation_issues }}');",
+        "options": {}
+      },
+      "id": "log-to-db",
+      "name": "Log to PostgreSQL",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [1100, 100],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-cred",
+          "name": "PostgreSQL"
+        }
+      },
+      "continueOnFail": false
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook from Collector": {
+      "main": [
+        [
+          {
+            "node": "Parse Input Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Input Data": {
+      "main": [
+        [
+          {
+            "node": "Validate Data Quality",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Data Quality": {
+      "main": [
+        [
+          {
+            "node": "Send to Processor",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Prepare Log Data",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Log Data": {
+      "main": [
+        [
+          {
+            "node": "Log to PostgreSQL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send to Processor": {
+      "main": [
+        []
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "any"
+  },
+  "versionId": "1.0",
+  "id": "validator-workflow-hackathon",
+  "meta": {
+    "instanceId": "hackathon-n8n"
+  },
+  "tags": [
+    {
+      "name": "hackathon",
+      "id": "1"
+    },
+    {
+      "name": "validator",
+      "id": "3"
+    }
+  ]
+}

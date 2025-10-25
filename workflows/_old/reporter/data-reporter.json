@@ -1,0 +1,291 @@
+{
+  "name": "Data Reporter",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "reporter",
+        "responseMode": "responseNode"
+      },
+      "id": "webhook-reporter-001",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [240, 300],
+      "webhookId": "reporter-webhook-001"
+    },
+    {
+      "parameters": {
+        "functionCode": "// Initialize reporting context\nconst incomingData = $('Webhook Trigger').first().json.body || $('Webhook Trigger').first().json;\nconst executionId = incomingData.processedData?.executionId || `report_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;\n\nconst reportingContext = {\n  executionId,\n  workflowName: 'data-reporter',\n  startTime: new Date().toISOString(),\n  version: incomingData.processedData?.version || `v${new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5)}`,\n  processedData: incomingData.processedData,\n  fileInfo: incomingData.fileInfo,\n  reportConfig: {\n    includeMetrics: true,\n    includeDashboard: true,\n    includeAlerts: true,\n    format: 'html',\n    styling: 'enhanced'\n  }\n};\n\nreturn reportingContext;"
+      },
+      "id": "init-reporting-001",
+      "name": "Initialize Reporting",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "query": "SELECT \n  al.workflow_name,\n  COUNT(*) as total_executions,\n  COUNT(CASE WHEN al.status = 'success' THEN 1 END) as successful_executions,\n  COUNT(CASE WHEN al.status = 'failed' THEN 1 END) as failed_executions,\n  AVG(al.duration_ms) as avg_duration_ms,\n  MAX(al.end_time) as last_execution\nFROM audit_logs al\nWHERE al.start_time >= NOW() - INTERVAL '24 hours'\nGROUP BY al.workflow_name\nORDER BY al.workflow_name;"
+      },
+      "id": "fetch-audit-metrics-001",
+      "name": "Fetch Audit Metrics",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [680, 180],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-n8n-credentials",
+          "name": "PostgreSQL n8n"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "query": "SELECT \n  execution_id,\n  workflow_name,\n  execution_time_ms,\n  records_processed,\n  error_rate,\n  confidence_score,\n  created_at\nFROM workflow_metrics\nWHERE created_at >= NOW() - INTERVAL '24 hours'\nORDER BY created_at DESC\nLIMIT 50;"
+      },
+      "id": "fetch-workflow-metrics-001",
+      "name": "Fetch Workflow Metrics",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [680, 300],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-n8n-credentials",
+          "name": "PostgreSQL n8n"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "query": "SELECT \n  alert_type,\n  severity,\n  workflow_name,\n  message,\n  execution_id,\n  created_at,\n  resolved,\n  resolved_at\nFROM alerts\nWHERE created_at >= NOW() - INTERVAL '24 hours'\nORDER BY \n  CASE severity \n    WHEN 'critical' THEN 1\n    WHEN 'high' THEN 2\n    WHEN 'medium' THEN 3\n    WHEN 'low' THEN 4\n  END,\n  created_at DESC;"
+      },
+      "id": "fetch-alerts-001",
+      "name": "Fetch Alerts",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [680, 420],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-n8n-credentials",
+          "name": "PostgreSQL n8n"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "query": "SELECT \n  version,\n  checksum,\n  record_count,\n  file_path,\n  file_size,\n  created_at\nFROM data_versions\nORDER BY created_at DESC\nLIMIT 10;"
+      },
+      "id": "fetch-version-history-001",
+      "name": "Fetch Version History",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [680, 540],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-n8n-credentials",
+          "name": "PostgreSQL n8n"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "functionCode": "// Aggregate all metrics and generate comprehensive report\nconst context = $('Initialize Reporting').first().json;\nconst auditMetrics = $('Fetch Audit Metrics').all();\nconst workflowMetrics = $('Fetch Workflow Metrics').all();\nconst alerts = $('Fetch Alerts').all();\nconst versionHistory = $('Fetch Version History').all();\n\n// Calculate dashboard metrics\nconst dashboardMetrics = {\n  totalExecutions: auditMetrics.reduce((sum, m) => sum + (m.json.total_executions || 0), 0),\n  successRate: auditMetrics.length > 0 ? \n    (auditMetrics.reduce((sum, m) => sum + (m.json.successful_executions || 0), 0) / \n     auditMetrics.reduce((sum, m) => sum + (m.json.total_executions || 0), 0) * 100).toFixed(2) : 0,\n  avgExecutionTime: auditMetrics.length > 0 ?\n    (auditMetrics.reduce((sum, m) => sum + (m.json.avg_duration_ms || 0), 0) / auditMetrics.length).toFixed(2) : 0,\n  totalRecordsProcessed: workflowMetrics.reduce((sum, m) => sum + (m.json.records_processed || 0), 0),\n  avgConfidenceScore: workflowMetrics.length > 0 ?\n    (workflowMetrics.reduce((sum, m) => sum + (m.json.confidence_score || 0), 0) / workflowMetrics.length).toFixed(3) : 0\n};\n\n// Alert summaries with severity levels\nconst alertSummary = {\n  total: alerts.length,\n  critical: alerts.filter(a => a.json.severity === 'critical').length,\n  high: alerts.filter(a => a.json.severity === 'high').length,\n  medium: alerts.filter(a => a.json.severity === 'medium').length,\n  low: alerts.filter(a => a.json.severity === 'low').length,\n  unresolved: alerts.filter(a => !a.json.resolved).length\n};\n\n// Version history summary\nconst versionSummary = {\n  totalVersions: versionHistory.length,\n  latestVersion: versionHistory[0]?.json.version || 'N/A',\n  totalDataSize: versionHistory.reduce((sum, v) => sum + (v.json.file_size || 0), 0),\n  avgRecordCount: versionHistory.length > 0 ?\n    (versionHistory.reduce((sum, v) => sum + (v.json.record_count || 0), 0) / versionHistory.length).toFixed(0) : 0\n};\n\n// Generate HTML report with CSS styling\nconst reportHTML = `\n<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n  <meta charset=\"UTF-8\">\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n  <title>n8n Data Intelligence Orchestrator Report</title>\n  <style>\n    * { margin: 0; padding: 0; box-sizing: border-box; }\n    body {\n      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;\n      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);\n      min-height: 100vh;\n      padding: 20px;\n    }\n    .container {\n      max-width: 1200px;\n      margin: 0 auto;\n      background: rgba(255, 255, 255, 0.95);\n      border-radius: 15px;\n      box-shadow: 0 15px 35px rgba(0, 0, 0, 0.1);\n      overflow: hidden;\n    }\n    .header {\n      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);\n      color: white;\n      padding: 30px;\n      text-align: center;\n    }\n    .header h1 { font-size: 2.5em; margin-bottom: 10px; }\n    .header p { font-size: 1.1em; opacity: 0.9; }\n    .content { padding: 30px; }\n    .metrics-grid {\n      display: grid;\n      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));\n      gap: 20px;\n      margin-bottom: 30px;\n    }\n    .metric-card {\n      background: white;\n      border-radius: 10px;\n      padding: 25px;\n      box-shadow: 0 5px 15px rgba(0, 0, 0, 0.08);\n      border-left: 4px solid #667eea;\n      transition: transform 0.3s ease;\n    }\n    .metric-card:hover { transform: translateY(-5px); }\n    .metric-value {\n      font-size: 2.5em;\n      font-weight: bold;\n      color: #667eea;\n      margin-bottom: 5px;\n    }\n    .metric-label {\n      color: #666;\n      font-size: 0.9em;\n      text-transform: uppercase;\n      letter-spacing: 1px;\n    }\n    .section {\n      background: white;\n      border-radius: 10px;\n      padding: 25px;\n      margin-bottom: 20px;\n      box-shadow: 0 5px 15px rgba(0, 0, 0, 0.08);\n    }\n    .section h2 {\n      color: #333;\n      margin-bottom: 20px;\n      padding-bottom: 10px;\n      border-bottom: 2px solid #f0f0f0;\n    }\n    .alert-item {\n      padding: 15px;\n      margin-bottom: 10px;\n      border-radius: 8px;\n      border-left: 4px solid;\n    }\n    .alert-critical { background: #fff5f5; border-color: #e53e3e; }\n    .alert-high { background: #fffaf0; border-color: #dd6b20; }\n    .alert-medium { background: #fffbeb; border-color: #d69e2e; }\n    .alert-low { background: #f0fff4; border-color: #38a169; }\n    .version-item {\n      padding: 15px;\n      background: #f8f9fa;\n      margin-bottom: 10px;\n      border-radius: 8px;\n      display: flex;\n      justify-content: space-between;\n      align-items: center;\n    }\n    .timestamp {\n      color: #666;\n      font-size: 0.9em;\n      margin-top: 10px;\n    }\n    .success { color: #38a169; }\n    .error { color: #e53e3e; }\n    .warning { color: #d69e2e; }\n  </style>\n</head>\n<body>\n  <div class=\"container\">\n    <div class=\"header\">\n      <h1>🤖 Data Intelligence Report</h1>\n      <p>Generated on ${new Date().toLocaleString('en-US', { \n        weekday: 'long', \n        year: 'numeric', \n        month: 'long', \n        day: 'numeric', \n        hour: '2-digit', \n        minute: '2-digit'\n      })}</p>\n      <p>Execution ID: ${context.executionId} | Version: ${context.version}</p>\n    </div>\n    \n    <div class=\"content\">\n      <div class=\"metrics-grid\">\n        <div class=\"metric-card\">\n          <div class=\"metric-value\">${dashboardMetrics.totalExecutions}</div>\n          <div class=\"metric-label\">Total Executions (24h)</div>\n        </div>\n        <div class=\"metric-card\">\n          <div class=\"metric-value ${parseFloat(dashboardMetrics.successRate) >= 90 ? 'success' : parseFloat(dashboardMetrics.successRate) >= 70 ? 'warning' : 'error'}\">${dashboardMetrics.successRate}%</div>\n          <div class=\"metric-label\">Success Rate</div>\n        </div>\n        <div class=\"metric-card\">\n          <div class=\"metric-value\">${dashboardMetrics.avgExecutionTime}ms</div>\n          <div class=\"metric-label\">Avg Execution Time</div>\n        </div>\n        <div class=\"metric-card\">\n          <div class=\"metric-value\">${dashboardMetrics.totalRecordsProcessed}</div>\n          <div class=\"metric-label\">Records Processed</div>\n        </div>\n        <div class=\"metric-card\">\n          <div class=\"metric-value\">${dashboardMetrics.avgConfidenceScore}</div>\n          <div class=\"metric-label\">Avg Confidence Score</div>\n        </div>\n        <div class=\"metric-card\">\n          <div class=\"metric-value ${alertSummary.unresolved > 0 ? 'error' : 'success'}\">${alertSummary.unresolved}</div>\n          <div class=\"metric-label\">Unresolved Alerts</div>\n        </div>\n      </div>\n      \n      <div class=\"section\">\n        <h2>📊 Alert Summary</h2>\n        <div class=\"metrics-grid\">\n          <div>Critical: <span class=\"error\">${alertSummary.critical}</span></div>\n          <div>High: <span class=\"warning\">${alertSummary.high}</span></div>\n          <div>Medium: <span class=\"warning\">${alertSummary.medium}</span></div>\n          <div>Low: <span class=\"success\">${alertSummary.low}</span></div>\n        </div>\n        ${alerts.slice(0, 5).map(alert => `\n          <div class=\"alert-item alert-${alert.json.severity}\">\n            <strong>${alert.json.alert_type}</strong> - ${alert.json.workflow_name}<br>\n            <span>${alert.json.message}</span>\n            <div class=\"timestamp\">${new Date(alert.json.created_at).toLocaleString()}</div>\n          </div>\n        `).join('')}\n      </div>\n      \n      <div class=\"section\">\n        <h2>📚 Version History</h2>\n        <p><strong>Total Versions:</strong> ${versionSummary.totalVersions} | \n           <strong>Latest:</strong> ${versionSummary.latestVersion} | \n           <strong>Avg Records:</strong> ${versionSummary.avgRecordCount}</p>\n        ${versionHistory.slice(0, 5).map(version => `\n          <div class=\"version-item\">\n            <div>\n              <strong>${version.json.version}</strong><br>\n              <span>Records: ${version.json.record_count} | Size: ${(version.json.file_size / 1024).toFixed(2)} KB</span>\n            </div>\n            <div class=\"timestamp\">${new Date(version.json.created_at).toLocaleString()}</div>\n          </div>\n        `).join('')}\n      </div>\n      \n      <div class=\"section\">\n        <h2>⚡ Workflow Performance</h2>\n        ${auditMetrics.map(metric => `\n          <div class=\"version-item\">\n            <div>\n              <strong>${metric.json.workflow_name}</strong><br>\n              <span>Executions: ${metric.json.total_executions} | Success Rate: ${((metric.json.successful_executions / metric.json.total_executions) * 100).toFixed(1)}%</span>\n            </div>\n            <div>${metric.json.avg_duration_ms ? `${metric.json.avg_duration_ms.toFixed(0)}ms avg` : 'N/A'}</div>\n          </div>\n        `).join('')}\n      </div>\n    </div>\n  </div>\n</body>\n</html>\n`;\n\nconst reportData = {\n  executionId: context.executionId,\n  version: context.version,\n  generatedAt: new Date().toISOString(),\n  htmlReport: reportHTML,\n  dashboardMetrics,\n  alertSummary,\n  versionSummary,\n  rawData: {\n    auditMetrics: auditMetrics.map(m => m.json),\n    workflowMetrics: workflowMetrics.map(m => m.json),\n    alerts: alerts.map(a => a.json),\n    versionHistory: versionHistory.map(v => v.json)\n  }\n};\n\nreturn reportData;"
+      },
+      "id": "generate-report-001",
+      "name": "Generate HTML Report",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Prepare report file for writing\nconst reportData = $('Generate HTML Report').first().json;\nconst version = reportData.version;\nconst timestamp = new Date().toISOString();\n\nconst fileName = `report-${version}.html`;\nconst filePath = `/outputs/${fileName}`;\n\nreturn {\n  fileName,\n  filePath,\n  fileContent: reportData.htmlReport,\n  fileSize: Buffer.byteLength(reportData.htmlReport, 'utf8'),\n  reportData\n};"
+      },
+      "id": "prepare-report-file-001",
+      "name": "Prepare Report File",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "operation": "write",
+        "fileContent": "={{ $json.fileContent }}",
+        "fileName": "={{ $json.fileName }}",
+        "options": {
+          "encoding": "utf8"
+        }
+      },
+      "id": "save-report-file-001",
+      "name": "Save Report File",
+      "type": "n8n-nodes-base.writeFile",
+      "typeVersion": 1,
+      "position": [1340, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.SLACK_WEBHOOK_URL }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"text\": \"📊 Data Intelligence Report Generated\",\n  \"blocks\": [\n    {\n      \"type\": \"section\",\n      \"text\": {\n        \"type\": \"mrkdwn\",\n        \"text\": \"*📊 Data Intelligence Report*\\n\\n*Key Metrics (24h):*\\n• Total Executions: {{ $('Prepare Report File').first().json.reportData.dashboardMetrics.totalExecutions }}\\n• Success Rate: {{ $('Prepare Report File').first().json.reportData.dashboardMetrics.successRate }}%\\n• Avg Execution Time: {{ $('Prepare Report File').first().json.reportData.dashboardMetrics.avgExecutionTime }}ms\\n• Records Processed: {{ $('Prepare Report File').first().json.reportData.dashboardMetrics.totalRecordsProcessed }}\\n• Confidence Score: {{ $('Prepare Report File').first().json.reportData.dashboardMetrics.avgConfidenceScore }}\\n\\n*Alerts:* {{ $('Prepare Report File').first().json.reportData.alertSummary.unresolved }} unresolved\"\n      }\n    },\n    {\n      \"type\": \"section\",\n      \"fields\": [\n        {\n          \"type\": \"mrkdwn\",\n          \"text\": \"*Report Version:*\\n{{ $('Prepare Report File').first().json.reportData.version }}\"\n        },\n        {\n          \"type\": \"mrkdwn\",\n          \"text\": \"*Generated:*\\n{{ new Date().toLocaleString() }}\"\n        },\n        {\n          \"type\": \"mrkdwn\",\n          \"text\": \"*File Size:*\\n{{ ($('Prepare Report File').first().json.fileSize / 1024).toFixed(2) }} KB\"\n        },\n        {\n          \"type\": \"mrkdwn\",\n          \"text\": \"*Status:*\\n{{ $('Prepare Report File').first().json.reportData.dashboardMetrics.successRate >= 90 ? '🟢 Healthy' : $('Prepare Report File').first().json.reportData.dashboardMetrics.successRate >= 70 ? '🟡 Warning' : '🔴 Critical' }}\"\n        }\n      ]\n    },\n    {\n      \"type\": \"actions\",\n      \"elements\": [\n        {\n          \"type\": \"button\",\n          \"text\": {\n            \"type\": \"plain_text\",\n            \"text\": \"View Grafana\"\n          },\n          \"url\": \"{{ $env.GRAFANA_URL || 'http://localhost:3000' }}\"\n        },\n        {\n          \"type\": \"button\",\n          \"text\": {\n            \"type\": \"plain_text\",\n            \"text\": \"View n8n\"\n          },\n          \"url\": \"{{ $env.N8N_EDITOR_BASE_URL || 'http://localhost:5678' }}\"\n        }\n      ]\n    }\n  ]\n}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "send-slack-notification-001",
+      "name": "Send Slack Notification",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [1560, 300],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"status\": \"success\",\n  \"executionId\": \"{{ $('Prepare Report File').first().json.reportData.executionId }}\",\n  \"version\": \"{{ $('Prepare Report File').first().json.reportData.version }}\",\n  \"message\": \"Report generated successfully\",\n  \"timestamp\": \"{{ new Date().toISOString() }}\",\n  \"reportInfo\": {\n    \"fileName\": \"{{ $('Prepare Report File').first().json.fileName }}\",\n    \"fileSize\": \"{{ $('Prepare Report File').first().json.fileSize }}\",\n    \"metricsIncluded\": true,\n    \"alertsIncluded\": true,\n    \"versionHistoryIncluded\": true\n  },\n  \"summary\": {{ JSON.stringify($('Prepare Report File').first().json.reportData.dashboardMetrics) }}\n}"
+      },
+      "id": "success-response-001",
+      "name": "Success Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1780, 300]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Initialize Reporting",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Initialize Reporting": {
+      "main": [
+        [
+          {
+            "node": "Fetch Audit Metrics",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Fetch Workflow Metrics",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Fetch Alerts",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Fetch Version History",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Audit Metrics": {
+      "main": [
+        [
+          {
+            "node": "Generate HTML Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Workflow Metrics": {
+      "main": [
+        [
+          {
+            "node": "Generate HTML Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Alerts": {
+      "main": [
+        [
+          {
+            "node": "Generate HTML Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Version History": {
+      "main": [
+        [
+          {
+            "node": "Generate HTML Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate HTML Report": {
+      "main": [
+        [
+          {
+            "node": "Prepare Report File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Report File": {
+      "main": [
+        [
+          {
+            "node": "Save Report File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Report File": {
+      "main": [
+        [
+          {
+            "node": "Send Slack Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Slack Notification": {
+      "main": [
+        [
+          {
+            "node": "Success Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "reporter-v1.0.0",
+  "meta": {
+    "instanceId": "data-reporter-001"
+  },
+  "id": "reporter-workflow-001"
+}

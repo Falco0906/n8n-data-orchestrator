@@ -1,0 +1,511 @@
+{
+  "name": "Data Collector",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "a8b5c7d9-1234-5678-9abc-def012345678",
+      "name": "Start",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "collector",
+        "responseMode": "responseNode"
+      },
+      "id": "webhook-trigger-001",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [460, 300],
+      "webhookId": "collector-webhook-001"
+    },
+    {
+      "parameters": {
+        "functionCode": "// Generate unique execution ID and extract parameters\nconst executionId = $('Webhook Trigger').first().json.headers['x-request-id'] || `exec_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;\nconst simulateFailure = $('Webhook Trigger').first().json.body?.simulateFailure || false;\nconst requestSource = $('Webhook Trigger').first().json.body?.source || 'manual';\n\n// Set workflow context\nreturn {\n  executionId,\n  simulateFailure,\n  requestSource,\n  startTime: new Date().toISOString(),\n  workflowName: 'data-collector',\n  version: `v${new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5)}`\n};"
+      },
+      "id": "init-context-001",
+      "name": "Initialize Context",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "table": "audit_logs",
+        "columns": "workflow_name, execution_id, status, start_time, version",
+        "additionalFields": {
+          "mode": "insert"
+        }
+      },
+      "id": "log-start-001",
+      "name": "Log Execution Start",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [900, 300],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-n8n-credentials",
+          "name": "PostgreSQL n8n"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "id": "parallel-split-001",
+      "name": "Split for Parallel APIs",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 1,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://api.openweathermap.org/data/2.5/weather",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openWeatherMapApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "={{ $env.WEATHER_CITY || 'London' }}"
+            },
+            {
+              "name": "appid",
+              "value": "={{ $env.OPENWEATHER_API_KEY }}"
+            },
+            {
+              "name": "units",
+              "value": "metric"
+            }
+          ]
+        },
+        "options": {
+          "redirect": {
+            "redirect": {}
+          },
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 10000
+        }
+      },
+      "id": "openweather-api-001",
+      "name": "OpenWeather API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [1340, 180],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "url": "https://newsapi.org/v2/top-headlines",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "newsApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "country",
+              "value": "={{ $env.NEWS_COUNTRY || 'us' }}"
+            },
+            {
+              "name": "apiKey",
+              "value": "={{ $env.NEWSAPI_KEY }}"
+            },
+            {
+              "name": "pageSize",
+              "value": "10"
+            }
+          ]
+        },
+        "options": {
+          "redirect": {
+            "redirect": {}
+          },
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 10000
+        }
+      },
+      "id": "newsapi-001",
+      "name": "NewsAPI",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [1340, 420],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "functionCode": "// Simulate failure if requested\nconst simulateFailure = $('Initialize Context').first().json.simulateFailure;\nif (simulateFailure) {\n  throw new Error('Simulated API failure for testing');\n}\n\n// Process OpenWeather data\nconst weatherData = $('OpenWeather API').first();\nconst newsData = $('NewsAPI').first();\nconst context = $('Initialize Context').first().json;\n\nconst processedWeather = weatherData.json ? {\n  source: 'openweather',\n  data: {\n    city: weatherData.json.name,\n    country: weatherData.json.sys?.country,\n    temperature: weatherData.json.main?.temp,\n    humidity: weatherData.json.main?.humidity,\n    description: weatherData.json.weather?.[0]?.description,\n    timestamp: new Date().toISOString()\n  },\n  metadata: {\n    api_response_time: weatherData.headers?.['x-response-time'] || 'unknown',\n    data_quality: 'high'\n  }\n} : null;\n\nconst processedNews = newsData.json ? {\n  source: 'newsapi',\n  data: {\n    totalResults: newsData.json.totalResults,\n    articles: newsData.json.articles?.slice(0, 5).map(article => ({\n      title: article.title,\n      source: article.source?.name,\n      publishedAt: article.publishedAt,\n      url: article.url\n    })),\n    timestamp: new Date().toISOString()\n  },\n  metadata: {\n    api_response_time: newsData.headers?.['x-response-time'] || 'unknown',\n    data_quality: 'high'\n  }\n} : null;\n\n// Combine all data\nconst collectedData = {\n  executionId: context.executionId,\n  version: context.version,\n  collectionTimestamp: new Date().toISOString(),\n  sources: {\n    weather: processedWeather,\n    news: processedNews\n  },\n  summary: {\n    sourcesCollected: [processedWeather, processedNews].filter(Boolean).length,\n    totalRecords: (processedWeather ? 1 : 0) + (processedNews?.data?.articles?.length || 0),\n    hasData: Boolean(processedWeather || processedNews),\n    collectionDuration: Date.now() - new Date(context.startTime).getTime()\n  }\n};\n\nreturn collectedData;"
+      },
+      "id": "merge-data-001",
+      "name": "Merge & Process Data",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1560, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "success-condition",
+              "leftValue": "={{ $json.summary.hasData }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equal"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-success-001",
+      "name": "Check Data Collection Success",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1780, 300]
+    },
+    {
+      "parameters": {
+        "table": "audit_logs",
+        "updateKey": "execution_id",
+        "columns": "status, end_time, duration_ms, retry_count, error_message",
+        "additionalFields": {
+          "mode": "update"
+        }
+      },
+      "id": "log-success-001",
+      "name": "Log Success",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [2000, 180],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-n8n-credentials",
+          "name": "PostgreSQL n8n"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.VALIDATOR_WEBHOOK_URL || 'http://n8n:5678/webhook/validator' }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "redirect": {
+            "redirect": {}
+          },
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 30000
+        }
+      },
+      "id": "trigger-validator-001",
+      "name": "Trigger Validator",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [2220, 180]
+    },
+    {
+      "parameters": {
+        "table": "audit_logs",
+        "updateKey": "execution_id",
+        "columns": "status, end_time, duration_ms, retry_count, error_message",
+        "additionalFields": {
+          "mode": "update"
+        }
+      },
+      "id": "log-failure-001",
+      "name": "Log Failure",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [2000, 420],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-n8n-credentials",
+          "name": "PostgreSQL n8n"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.SLACK_WEBHOOK_URL }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"text\": \"🚨 Data Collection Failed\",\n  \"blocks\": [\n    {\n      \"type\": \"section\",\n      \"text\": {\n        \"type\": \"mrkdwn\",\n        \"text\": \"*Data Collection Failure Alert*\\n\\n• *Execution ID*: {{ $('Initialize Context').first().json.executionId }}\\n• *Time*: {{ new Date().toISOString() }}\\n• *Workflow*: data-collector\\n• *Status*: Failed\\n\\n*Error Details:*\\n```{{ $json.error || 'Unknown error occurred' }}```\"\n      }\n    },\n    {\n      \"type\": \"actions\",\n      \"elements\": [\n        {\n          \"type\": \"button\",\n          \"text\": {\n            \"type\": \"plain_text\",\n            \"text\": \"View Logs\"\n          },\n          \"url\": \"{{ $env.N8N_EDITOR_BASE_URL }}/executions\"\n        }\n      ]\n    }\n  ]\n}",
+        "options": {
+          "redirect": {
+            "redirect": {}
+          },
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "slack-alert-001",
+      "name": "Send Slack Alert",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [2220, 420],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "table": "alerts",
+        "columns": "alert_type, severity, workflow_name, message, execution_id, created_at",
+        "additionalFields": {
+          "mode": "insert"
+        }
+      },
+      "id": "create-alert-001",
+      "name": "Create Alert Record",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [2440, 420],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-n8n-credentials",
+          "name": "PostgreSQL n8n"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"status\": \"success\",\n  \"executionId\": \"{{ $('Initialize Context').first().json.executionId }}\",\n  \"version\": \"{{ $('Initialize Context').first().json.version }}\",\n  \"message\": \"Data collection completed successfully\",\n  \"timestamp\": \"{{ new Date().toISOString() }}\",\n  \"summary\": {{ JSON.stringify($('Merge & Process Data').first().json.summary) }}\n}"
+      },
+      "id": "success-response-001",
+      "name": "Success Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [2440, 180]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"status\": \"error\",\n  \"executionId\": \"{{ $('Initialize Context').first().json.executionId }}\",\n  \"message\": \"Data collection failed\",\n  \"timestamp\": \"{{ new Date().toISOString() }}\",\n  \"error\": \"{{ $json.error || 'Unknown error occurred' }}\"\n}",
+        "options": {
+          "responseCode": 500
+        }
+      },
+      "id": "error-response-001",
+      "name": "Error Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [2660, 420]
+    }
+  ],
+  "connections": {
+    "Start": {
+      "main": [
+        [
+          {
+            "node": "Webhook Trigger",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Initialize Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Initialize Context": {
+      "main": [
+        [
+          {
+            "node": "Log Execution Start",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Execution Start": {
+      "main": [
+        [
+          {
+            "node": "Split for Parallel APIs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split for Parallel APIs": {
+      "main": [
+        [
+          {
+            "node": "OpenWeather API",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "NewsAPI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenWeather API": {
+      "main": [
+        [
+          {
+            "node": "Merge & Process Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "NewsAPI": {
+      "main": [
+        [
+          {
+            "node": "Merge & Process Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge & Process Data": {
+      "main": [
+        [
+          {
+            "node": "Check Data Collection Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Data Collection Success": {
+      "main": [
+        [
+          {
+            "node": "Log Success",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Success": {
+      "main": [
+        [
+          {
+            "node": "Trigger Validator",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Trigger Validator": {
+      "main": [
+        [
+          {
+            "node": "Success Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Failure": {
+      "main": [
+        [
+          {
+            "node": "Send Slack Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Slack Alert": {
+      "main": [
+        [
+          {
+            "node": "Create Alert Record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Alert Record": {
+      "main": [
+        [
+          {
+            "node": "Error Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "collector-v1.0.0",
+  "meta": {
+    "instanceId": "data-collector-001"
+  },
+  "id": "collector-workflow-001",
+  "tags": [
+    {
+      "createdAt": "2025-10-25T00:00:00.000Z",
+      "updatedAt": "2025-10-25T00:00:00.000Z",
+      "id": "collector-tag",
+      "name": "data-collection"
+    }
+  ]
+}

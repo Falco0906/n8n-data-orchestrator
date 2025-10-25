@@ -1,0 +1,98 @@
+{
+  "name": "Data Reporter",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "reporter"
+      },
+      "id": "webhook-reporter",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [200, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO audit_logs (execution_id, workflow_name, status, records_processed, end_time) VALUES ('{{ $json.executionId }}', 'data-reporter', 'success', {{ $json.summary.totalRecords }}, NOW())"
+      },
+      "id": "log-completion",
+      "name": "Log Completion",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [400, 300],
+      "credentials": {
+        "postgres": {
+          "id": "postgres_db",
+          "name": "PostgreSQL Database"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE workflow_metrics SET total_executions = total_executions + 1, successful_executions = successful_executions + 1, last_execution = NOW(), success_rate = (successful_executions::float / total_executions * 100) WHERE workflow_name = 'data-pipeline'"
+      },
+      "id": "update-metrics",
+      "name": "Update Metrics",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [600, 300],
+      "credentials": {
+        "postgres": {
+          "id": "postgres_db",
+          "name": "PostgreSQL Database"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ {\n  \"status\": \"success\",\n  \"message\": \"Data pipeline completed successfully\",\n  \"reportSummary\": {\n    \"executionId\": $json.executionId,\n    \"version\": $json.version,\n    \"totalRecords\": $json.summary.totalRecords,\n    \"dataQuality\": $json.summary.dataQuality,\n    \"processingTime\": $json.summary.processingDuration + \"ms\",\n    \"enrichmentApplied\": $json.summary.enrichmentApplied\n  },\n  \"outputs\": {\n    \"database\": \"PostgreSQL - audit_logs, processed_data, data_versions updated\",\n    \"metrics\": \"Workflow metrics updated\",\n    \"report\": \"HTML report generated (simulated)\"\n  },\n  \"timestamp\": new Date().toISOString(),\n  \"pipelineComplete\": true\n} }}"
+      },
+      "id": "respond-final",
+      "name": "Respond Final",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [800, 300]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Log Completion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Completion": {
+      "main": [
+        [
+          {
+            "node": "Update Metrics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Metrics": {
+      "main": [
+        [
+          {
+            "node": "Respond Final",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {}
+}

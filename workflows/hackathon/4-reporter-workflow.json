@@ -1,0 +1,188 @@
+{
+  "name": "4. Data Reporter",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "report-data",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook from Processor",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "webhookId": "reporter-webhook"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse incoming data - webhook body is already JSON\nreturn $input.all();"
+      },
+      "id": "parse-input",
+      "name": "Parse Input Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// REPORTING STAGE - Generate comprehensive report\nconst items = $input.all();\nconst dataItems = items.filter(item => \n  item.json.processing_stage === 'completed' && \n  item.json.processing_status === 'success'\n);\n\nconst summary = items.find(item => item.json.processing_stage === 'summary');\n\nif (dataItems.length === 0) {\n  return [{\n    json: {\n      report_status: 'no_data',\n      report_message: 'No valid data items to report',\n      report_timestamp: new Date().toISOString()\n    }\n  }];\n}\n\nconst reportTimestamp = new Date().toISOString();\nconst executionId = dataItems[0].json.execution_id;\nconst version = dataItems[0].json.version;\n\n// Calculate comprehensive statistics\nconst weatherItems = dataItems.filter(item => item.json.source === 'weather');\nconst bitcoinItems = dataItems.filter(item => item.json.source === 'bitcoin');\n\nconst stats = {\n  total_items: dataItems.length,\n  weather_items: weatherItems.length,\n  bitcoin_items: bitcoinItems.length,\n  average_validation_score: Math.round(\n    dataItems.reduce((sum, item) => sum + (item.json.validation_score || 0), 0) / dataItems.length\n  ),\n  average_pipeline_duration_ms: Math.round(\n    dataItems.reduce((sum, item) => sum + (item.json.total_pipeline_duration_ms || 0), 0) / dataItems.length\n  ),\n  total_metrics_extracted: summary?.json.summary?.total_metrics_extracted || 0,\n  total_enrichments_added: summary?.json.summary?.total_enrichments_added || 0\n};\n\n// Weather analysis\nconst weatherAnalysis = weatherItems.length > 0 ? {\n  location: weatherItems[0].json.metrics?.location?.city || 'Unknown',\n  country: weatherItems[0].json.metrics?.location?.country || 'Unknown',\n  temperature_celsius: weatherItems[0].json.metrics?.temperature_celsius,\n  temperature_fahrenheit: weatherItems[0].json.enriched_data?.temperature_fahrenheit,\n  feels_like: weatherItems[0].json.metrics?.feels_like_celsius,\n  humidity: weatherItems[0].json.metrics?.humidity_percent,\n  pressure: weatherItems[0].json.metrics?.pressure_hpa,\n  weather_condition: weatherItems[0].json.metrics?.weather_condition,\n  weather_description: weatherItems[0].json.metrics?.weather_description,\n  comfort_index: weatherItems[0].json.enriched_data?.comfort_index,\n  is_comfortable: weatherItems[0].json.enriched_data?.is_comfortable,\n  visibility: weatherItems[0].json.enriched_data?.visibility_category,\n  wind: weatherItems[0].json.enriched_data?.wind_category,\n  season: weatherItems[0].json.enriched_data?.season,\n  time_of_day: weatherItems[0].json.enriched_data?.time_of_day\n} : null;\n\n// Bitcoin analysis\nconst bitcoinAnalysis = bitcoinItems.length > 0 ? {\n  usd_rate: bitcoinItems[0].json.metrics?.usd_rate,\n  eur_rate: bitcoinItems[0].json.metrics?.eur_rate,\n  gbp_rate: bitcoinItems[0].json.metrics?.gbp_rate,\n  price_category: bitcoinItems[0].json.enriched_data?.price_category,\n  price_in_thousands: bitcoinItems[0].json.enriched_data?.price_in_thousands,\n  market_sentiment: bitcoinItems[0].json.enriched_data?.market_sentiment,\n  currency_spread_percent: bitcoinItems[0].json.enriched_data?.currency_spread_percent,\n  is_above_50k: bitcoinItems[0].json.enriched_data?.is_above_50k\n} : null;\n\n// Generate insights\nconst insights = [];\n\nif (weatherAnalysis) {\n  if (weatherAnalysis.temperature_celsius > 30) {\n    insights.push(`🌡️ High temperature alert: ${weatherAnalysis.temperature_celsius}°C in ${weatherAnalysis.location}`);\n  }\n  if (weatherAnalysis.is_comfortable) {\n    insights.push(`✅ Comfortable weather conditions in ${weatherAnalysis.location}`);\n  }\n  if (!weatherAnalysis.is_comfortable) {\n    insights.push(`⚠️ Uncomfortable weather conditions in ${weatherAnalysis.location}`);\n  }\n}\n\nif (bitcoinAnalysis) {\n  if (bitcoinAnalysis.is_above_50k) {\n    insights.push(`🚀 Bitcoin above $50k: $${bitcoinAnalysis.usd_rate.toLocaleString()}`);\n  }\n  if (bitcoinAnalysis.market_sentiment === 'bullish') {\n    insights.push(`📈 Bullish Bitcoin market sentiment`);\n  }\n  if (bitcoinAnalysis.market_sentiment === 'bearish') {\n    insights.push(`📉 Bearish Bitcoin market sentiment`);\n  }\n}\n\nif (stats.average_validation_score < 80) {\n  insights.push(`⚠️ Data quality below target: ${stats.average_validation_score}%`);\n}\n\nif (stats.average_pipeline_duration_ms > 5000) {\n  insights.push(`⏱️ Pipeline processing slow: ${stats.average_pipeline_duration_ms}ms`);\n}\n\n// Generate comprehensive report\nconst report = {\n  json: {\n    report_id: `rpt_${Date.now()}`,\n    execution_id: executionId,\n    version: version,\n    report_timestamp: reportTimestamp,\n    report_stage: 'completed',\n    \n    // Executive Summary\n    executive_summary: {\n      status: 'success',\n      total_data_sources: stats.total_items,\n      average_quality_score: `${stats.average_validation_score}%`,\n      pipeline_performance: `${stats.average_pipeline_duration_ms}ms`,\n      key_insights_count: insights.length\n    },\n    \n    // Detailed Statistics\n    statistics: stats,\n    \n    // Data Analysis\n    analysis: {\n      weather: weatherAnalysis,\n      bitcoin: bitcoinAnalysis\n    },\n    \n    // Insights & Recommendations\n    insights: insights,\n    \n    // Data Quality Metrics\n    quality_metrics: {\n      validation_score: stats.average_validation_score,\n      quality_grade: stats.average_validation_score >= 90 ? 'A' :\n                     stats.average_validation_score >= 80 ? 'B' :\n                     stats.average_validation_score >= 70 ? 'C' : 'D',\n      metrics_extracted: stats.total_metrics_extracted,\n      enrichments_added: stats.total_enrichments_added,\n      data_completeness: stats.average_validation_score >= 80 ? 'high' : 'medium'\n    },\n    \n    // Performance Metrics\n    performance_metrics: {\n      average_pipeline_duration_ms: stats.average_pipeline_duration_ms,\n      pipeline_efficiency: stats.average_pipeline_duration_ms < 3000 ? 'excellent' :\n                          stats.average_pipeline_duration_ms < 5000 ? 'good' : 'needs_improvement'\n    },\n    \n    // Detailed Data Items\n    data_details: dataItems.map(item => ({\n      record_id: item.json.record_id,\n      source: item.json.source,\n      validation_score: item.json.validation_score,\n      validation_grade: item.json.validation_grade,\n      metric_count: item.json.metric_count,\n      enrichment_count: item.json.enrichment_count,\n      pipeline_duration_ms: item.json.total_pipeline_duration_ms\n    }))\n  }\n};\n\nreturn [report];"
+      },
+      "id": "generate-report",
+      "name": "Generate Comprehensive Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://quickchart.io/chart/create",
+        "sendBody": true,
+        "contentType": "application/json",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "chart",
+              "value": "={{ JSON.stringify({\n  type: 'bar',\n  data: {\n    labels: ['Weather', 'Bitcoin', 'Avg Quality'],\n    datasets: [{\n      label: 'Pipeline Metrics',\n      data: [\n        $json.statistics.weather_items,\n        $json.statistics.bitcoin_items,\n        $json.statistics.average_validation_score\n      ],\n      backgroundColor: [\n        'rgba(54, 162, 235, 0.6)',\n        'rgba(255, 206, 86, 0.6)',\n        'rgba(75, 192, 192, 0.6)'\n      ],\n      borderColor: [\n        'rgba(54, 162, 235, 1)',\n        'rgba(255, 206, 86, 1)',\n        'rgba(75, 192, 192, 1)'\n      ],\n      borderWidth: 2\n    }]\n  },\n  options: {\n    title: {\n      display: true,\n      text: 'Data Intelligence Pipeline Report',\n      fontSize: 18\n    },\n    scales: {\n      yAxes: [{\n        ticks: {\n          beginAtZero: true\n        }\n      }]\n    }\n  }\n}) }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "generate-chart",
+      "name": "Generate Dashboard Chart",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [900, 200],
+      "continueOnFail": true
+    },
+
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ {\n  \"status\": \"success\",\n  \"stage\": \"reporter\",\n  \"execution_id\": $json.execution_id,\n  \"report_id\": $json.report_id,\n  \"executive_summary\": $json.executive_summary,\n  \"insights\": $json.insights,\n  \"quality_metrics\": $json.quality_metrics,\n  \"performance_metrics\": $json.performance_metrics,\n  \"timestamp\": $json.report_timestamp,\n  \"pipeline\": \"completed\"\n} }}",
+        "options": {}
+      },
+      "id": "respond-webhook",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prepare data for logging (Reporter usually has clean data)\nconst items = $input.all();\nconst loggableItems = [];\n\nfor (const item of items) {\n  const data = item.json;\n  \n  // Only log items with execution_id and version\n  if (data.execution_id && data.version) {\n    loggableItems.push({\n      json: {\n        log_timestamp: data.report_timestamp || new Date().toISOString(),\n        execution_id: data.execution_id,\n        version: data.version,\n        stage: 'reporting',\n        status: 'completed',\n        source: 'reporter',\n        data: JSON.stringify(data)\n      }\n    });\n  }\n}\n\nreturn loggableItems;"
+      },
+      "id": "prepare-log-data",
+      "name": "Prepare Log Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 100]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO audit_logs (timestamp, execution_id, version, stage, status, source, data) VALUES ('{{ $json.log_timestamp }}', '{{ $json.execution_id }}', '{{ $json.version }}', '{{ $json.stage }}', '{{ $json.status }}', '{{ $json.source }}', '{{ $json.data }}');",
+        "options": {}
+      },
+      "id": "log-to-db",
+      "name": "Log to PostgreSQL",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [1100, 100],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-cred",
+          "name": "PostgreSQL"
+        }
+      },
+      "continueOnFail": false
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook from Processor": {
+      "main": [
+        [
+          {
+            "node": "Parse Input Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Input Data": {
+      "main": [
+        [
+          {
+            "node": "Generate Comprehensive Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Comprehensive Report": {
+      "main": [
+        [
+          {
+            "node": "Generate Dashboard Chart",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Prepare Log Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Log Data": {
+      "main": [
+        [
+          {
+            "node": "Log to PostgreSQL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Dashboard Chart": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "any"
+  },
+  "versionId": "1.0",
+  "id": "reporter-workflow-hackathon",
+  "meta": {
+    "instanceId": "hackathon-n8n"
+  },
+  "tags": [
+    {
+      "name": "hackathon",
+      "id": "1"
+    },
+    {
+      "name": "reporter",
+      "id": "5"
+    }
+  ]
+}

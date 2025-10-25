@@ -1,0 +1,184 @@
+{
+  "name": "3. Data Processor",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "process-data",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook from Validator",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "webhookId": "processor-webhook"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse incoming data - webhook body is already JSON\nreturn $input.all();"
+      },
+      "id": "parse-input",
+      "name": "Parse Input Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// PROCESSING STAGE - Transform and enrich data\nconst items = $input.all();\nconst processedItems = [];\n\nfor (const item of items) {\n  const data = item.json;\n  \n  // Skip non-data items\n  if (data.validation_stage === 'summary' || data.validation_stage === 'skipped') {\n    processedItems.push({ json: { ...data, processing_stage: 'skipped' } });\n    continue;\n  }\n  \n  // Only process validated items\n  if (!data.is_valid) {\n    continue;\n  }\n  \n  let processed = {\n    // Preserve existing metadata\n    record_id: data.record_id,\n    execution_id: data.execution_id,\n    version: data.version,\n    source: data.source,\n    data_type: data.source,\n    \n    // Timestamps\n    collected_at: data.collected_at,\n    validated_at: data.validation_timestamp,\n    processed_at: new Date().toISOString(),\n    \n    // Validation info\n    validation_score: data.validation_score,\n    validation_grade: data.validation_grade,\n    \n    // Processing metadata\n    processing_stage: 'completed',\n    processing_status: 'success',\n    \n    // Processed metrics (will be populated below)\n    metrics: {},\n    enriched_data: {}\n  };\n  \n  // WEATHER DATA PROCESSING\n  if (data.source === 'weather' && data.raw_data && data.raw_data.main) {\n    const raw = data.raw_data;\n    \n    processed.metrics = {\n      temperature_celsius: raw.main.temp,\n      feels_like_celsius: raw.main.feels_like,\n      humidity_percent: raw.main.humidity,\n      pressure_hpa: raw.main.pressure,\n      wind_speed_ms: raw.wind?.speed || 0,\n      visibility_meters: raw.visibility,\n      cloudiness_percent: raw.clouds?.all || 0,\n      weather_condition: raw.weather[0]?.main,\n      weather_description: raw.weather[0]?.description,\n      location: {\n        city: raw.name,\n        country: raw.sys.country,\n        lat: raw.coord.lat,\n        lon: raw.coord.lon\n      }\n    };\n    \n    // ENRICHMENT: Calculate derived metrics\n    processed.enriched_data = {\n      temperature_fahrenheit: (raw.main.temp * 9/5) + 32,\n      comfort_index: calculateComfortIndex(raw.main.temp, raw.main.humidity),\n      weather_category: categorizeWeather(raw.weather[0]?.main),\n      temperature_feel_difference: Math.abs(raw.main.temp - raw.main.feels_like),\n      is_comfortable: isComfortableWeather(raw.main.temp, raw.main.humidity, raw.wind?.speed),\n      visibility_category: categorizeVisibility(raw.visibility),\n      wind_category: categorizeWind(raw.wind?.speed),\n      season: getSeason(),\n      time_of_day: getTimeOfDay()\n    };\n    \n    processed.metric_count = Object.keys(processed.metrics).length;\n    processed.enrichment_count = Object.keys(processed.enriched_data).length;\n  }\n  \n  // BITCOIN DATA PROCESSING\n  else if (data.source === 'bitcoin' && data.raw_data && data.raw_data.bpi) {\n    const raw = data.raw_data;\n    \n    processed.metrics = {\n      usd_rate: parseFloat(raw.bpi.USD.rate.replace(/,/g, '')),\n      eur_rate: parseFloat(raw.bpi.EUR.rate.replace(/,/g, '')),\n      gbp_rate: parseFloat(raw.bpi.GBP.rate.replace(/,/g, '')),\n      last_updated: raw.time.updated,\n      update_timestamp_iso: raw.time.updatedISO\n    };\n    \n    // ENRICHMENT: Calculate derived metrics\n    const usdRate = processed.metrics.usd_rate;\n    const eurRate = processed.metrics.eur_rate;\n    const gbpRate = processed.metrics.gbp_rate;\n    \n    processed.enriched_data = {\n      price_category: categorizeBitcoinPrice(usdRate),\n      eur_to_usd_rate: eurRate / usdRate,\n      gbp_to_usd_rate: gbpRate / usdRate,\n      currency_spread_percent: ((Math.max(usdRate, eurRate, gbpRate) - Math.min(usdRate, eurRate, gbpRate)) / usdRate * 100).toFixed(2),\n      is_above_50k: usdRate > 50000,\n      price_in_thousands: Math.round(usdRate / 1000),\n      market_sentiment: getMarketSentiment(usdRate)\n    };\n    \n    processed.metric_count = Object.keys(processed.metrics).length;\n    processed.enrichment_count = Object.keys(processed.enriched_data).length;\n  }\n  \n  // Calculate processing duration\n  const collectedTime = new Date(data.collected_at).getTime();\n  const processedTime = new Date(processed.processed_at).getTime();\n  processed.total_pipeline_duration_ms = processedTime - collectedTime;\n  \n  processedItems.push({ json: processed });\n}\n\n// Add processing summary\nconst validItems = processedItems.filter(item => item.json.processing_stage !== 'skipped');\nconst summary = {\n  json: {\n    record_id: `processing_summary_${Date.now()}`,\n    processing_stage: 'summary',\n    processed_at: new Date().toISOString(),\n    summary: {\n      total_items_processed: validItems.length,\n      weather_items: validItems.filter(item => item.json.source === 'weather').length,\n      bitcoin_items: validItems.filter(item => item.json.source === 'bitcoin').length,\n      total_metrics_extracted: validItems.reduce((sum, item) => sum + (item.json.metric_count || 0), 0),\n      total_enrichments_added: validItems.reduce((sum, item) => sum + (item.json.enrichment_count || 0), 0),\n      average_pipeline_duration_ms: validItems.length > 0 ?\n        Math.round(validItems.reduce((sum, item) => sum + (item.json.total_pipeline_duration_ms || 0), 0) / validItems.length) : 0\n    }\n  }\n};\n\nprocessedItems.push(summary);\n\n// HELPER FUNCTIONS\nfunction calculateComfortIndex(temp, humidity) {\n  // Heat index calculation\n  if (temp >= 27) {\n    return temp + (humidity / 100) * (temp - 14.4);\n  }\n  return temp;\n}\n\nfunction categorizeWeather(condition) {\n  if (!condition) return 'unknown';\n  const lower = condition.toLowerCase();\n  if (lower.includes('clear') || lower.includes('sun')) return 'clear';\n  if (lower.includes('cloud')) return 'cloudy';\n  if (lower.includes('rain')) return 'rainy';\n  if (lower.includes('snow')) return 'snowy';\n  if (lower.includes('storm')) return 'stormy';\n  return 'other';\n}\n\nfunction isComfortableWeather(temp, humidity, windSpeed) {\n  return temp >= 18 && temp <= 26 && humidity >= 30 && humidity <= 70 && windSpeed < 5;\n}\n\nfunction categorizeVisibility(visibility) {\n  if (visibility >= 10000) return 'excellent';\n  if (visibility >= 5000) return 'good';\n  if (visibility >= 2000) return 'moderate';\n  return 'poor';\n}\n\nfunction categorizeWind(speed) {\n  if (!speed) return 'calm';\n  if (speed < 2) return 'calm';\n  if (speed < 6) return 'light';\n  if (speed < 12) return 'moderate';\n  return 'strong';\n}\n\nfunction getSeason() {\n  const month = new Date().getMonth();\n  if (month >= 2 && month <= 4) return 'spring';\n  if (month >= 5 && month <= 7) return 'summer';\n  if (month >= 8 && month <= 10) return 'fall';\n  return 'winter';\n}\n\nfunction getTimeOfDay() {\n  const hour = new Date().getHours();\n  if (hour >= 6 && hour < 12) return 'morning';\n  if (hour >= 12 && hour < 18) return 'afternoon';\n  if (hour >= 18 && hour < 22) return 'evening';\n  return 'night';\n}\n\nfunction categorizeBitcoinPrice(price) {\n  if (price < 30000) return 'low';\n  if (price < 50000) return 'medium';\n  if (price < 70000) return 'high';\n  return 'very_high';\n}\n\nfunction getMarketSentiment(price) {\n  if (price > 60000) return 'bullish';\n  if (price > 40000) return 'neutral';\n  return 'bearish';\n}\n\nreturn processedItems;"
+      },
+      "id": "process-transform",
+      "name": "Process & Transform Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://n8n:5678/webhook/report-data",
+        "sendBody": true,
+        "contentType": "application/json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "send-to-reporter",
+      "name": "Send to Reporter",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [900, 300],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ {\n  \"status\": \"success\",\n  \"stage\": \"processor\",\n  \"execution_id\": $('Parse Input Data').first().json.execution_id,\n  \"processing_summary\": $('Process & Transform Data').last().json.summary,\n  \"next_stage\": \"reporter\",\n  \"timestamp\": $now.toISO()\n} }}",
+        "options": {}
+      },
+      "id": "respond-webhook",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Filter and prepare data for logging\nconst items = $input.all();\nconst loggableItems = [];\n\nfor (const item of items) {\n  const data = item.json;\n  \n  // Skip summary items\n  if (data.processing_stage === 'summary' || !data.execution_id) {\n    continue;\n  }\n  \n  // Only log items with execution_id and version\n  if (data.execution_id && data.version) {\n    loggableItems.push({\n      json: {\n        log_timestamp: data.processed_at || new Date().toISOString(),\n        execution_id: data.execution_id,\n        version: data.version,\n        stage: 'processing',\n        status: data.processing_status || 'completed',\n        source: data.source || 'processor',\n        data: JSON.stringify(data),\n        metrics: JSON.stringify(data.metrics || {}),\n        enrichments: JSON.stringify(data.enriched_data || {})\n      }\n    });\n  }\n}\n\nreturn loggableItems;"
+      },
+      "id": "prepare-log-data",
+      "name": "Prepare Log Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 100]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO audit_logs (timestamp, execution_id, version, stage, status, source, data, metrics, enrichments) VALUES ('{{ $json.log_timestamp }}', '{{ $json.execution_id }}', '{{ $json.version }}', '{{ $json.stage }}', '{{ $json.status }}', '{{ $json.source }}', '{{ $json.data }}', '{{ $json.metrics }}', '{{ $json.enrichments }}');",
+        "options": {}
+      },
+      "id": "log-to-db",
+      "name": "Log to PostgreSQL",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [1100, 100],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-cred",
+          "name": "PostgreSQL"
+        }
+      },
+      "continueOnFail": false
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook from Validator": {
+      "main": [
+        [
+          {
+            "node": "Parse Input Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Input Data": {
+      "main": [
+        [
+          {
+            "node": "Process & Transform Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process & Transform Data": {
+      "main": [
+        [
+          {
+            "node": "Send to Reporter",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Prepare Log Data",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Log Data": {
+      "main": [
+        [
+          {
+            "node": "Log to PostgreSQL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send to Reporter": {
+      "main": [
+        []
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "any"
+  },
+  "versionId": "1.0",
+  "id": "processor-workflow-hackathon",
+  "meta": {
+    "instanceId": "hackathon-n8n"
+  },
+  "tags": [
+    {
+      "name": "hackathon",
+      "id": "1"
+    },
+    {
+      "name": "processor",
+      "id": "4"
+    }
+  ]
+}

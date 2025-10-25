@@ -1,0 +1,239 @@
+{
+  "info": {
+    "name": "n8n Data Intelligence Orchestrator - Hackathon",
+    "description": "Complete API collection for testing the 4-workflow data pipeline",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "1. Trigger Complete Pipeline (London)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"location\": \"London\",\n  \"country\": \"uk\"\n}"
+        },
+        "url": {
+          "raw": "http://localhost:5678/webhook/collect-data",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "5678",
+          "path": [
+            "webhook",
+            "collect-data"
+          ]
+        },
+        "description": "Triggers the complete 4-workflow pipeline starting with the Data Collector"
+      },
+      "response": []
+    },
+    {
+      "name": "2. Trigger Pipeline (New York)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"location\": \"New York\",\n  \"country\": \"us\"\n}"
+        },
+        "url": {
+          "raw": "http://localhost:5678/webhook/collect-data",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "5678",
+          "path": [
+            "webhook",
+            "collect-data"
+          ]
+        },
+        "description": "Test pipeline with different location"
+      },
+      "response": []
+    },
+    {
+      "name": "3. Trigger Pipeline (Tokyo)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"location\": \"Tokyo\",\n  \"country\": \"jp\"\n}"
+        },
+        "url": {
+          "raw": "http://localhost:5678/webhook/collect-data",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "5678",
+          "path": [
+            "webhook",
+            "collect-data"
+          ]
+        },
+        "description": "Test pipeline with Tokyo location"
+      },
+      "response": []
+    },
+    {
+      "name": "4. Trigger Pipeline (Paris)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"location\": \"Paris\",\n  \"country\": \"fr\"\n}"
+        },
+        "url": {
+          "raw": "http://localhost:5678/webhook/collect-data",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "5678",
+          "path": [
+            "webhook",
+            "collect-data"
+          ]
+        },
+        "description": "Test pipeline with Paris location"
+      },
+      "response": []
+    },
+    {
+      "name": "TEST: Invalid Data (Should Fail Validation)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"invalid\": \"data\",\n  \"missing\": \"required_fields\"\n}"
+        },
+        "url": {
+          "raw": "http://localhost:5678/webhook/collect-data",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "5678",
+          "path": [
+            "webhook",
+            "collect-data"
+          ]
+        },
+        "description": "Test error handling - validator should block this and send alert"
+      },
+      "response": []
+    },
+    {
+      "name": "Check n8n Health",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:5678/healthz",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "5678",
+          "path": [
+            "healthz"
+          ]
+        },
+        "description": "Check if n8n is running and healthy"
+      },
+      "response": []
+    },
+    {
+      "name": "Check Grafana Health",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:3000/api/health",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "3000",
+          "path": [
+            "api",
+            "health"
+          ]
+        },
+        "description": "Check if Grafana is running"
+      },
+      "response": []
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          ""
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "pm.test(\"Status code is 200\", function () {",
+          "    pm.response.to.have.status(200);",
+          "});",
+          "",
+          "pm.test(\"Response has status field\", function () {",
+          "    var jsonData = pm.response.json();",
+          "    pm.expect(jsonData).to.have.property('status');",
+          "});",
+          "",
+          "pm.test(\"Pipeline completed successfully\", function () {",
+          "    var jsonData = pm.response.json();",
+          "    pm.expect(jsonData.status).to.eql('success');",
+          "});"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:5678",
+      "type": "string"
+    }
+  ]
+}
