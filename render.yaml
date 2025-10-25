@@ -5,6 +5,7 @@ services:
     env: docker
     plan: free
     dockerfilePath: ./Dockerfile.postgres
+    ipAllowList: []  # Allow all IPs (empty list = public access for free tier)
     envVars:
       - key: POSTGRES_DB
         value: n8n
