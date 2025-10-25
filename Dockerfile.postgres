@@ -1,0 +1,7 @@
+FROM postgres:15-alpine
+
+# Create initialization script for audit_logs table
+RUN mkdir -p /docker-entrypoint-initdb.d && \
+    echo "CREATE TABLE IF NOT EXISTS audit_logs (id SERIAL PRIMARY KEY, execution_id VARCHAR(255), version VARCHAR(50), stage VARCHAR(50), status VARCHAR(20), location VARCHAR(100), timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP);" > /docker-entrypoint-initdb.d/init.sql
+
+EXPOSE 5432

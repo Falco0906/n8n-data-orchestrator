@@ -2,6 +2,9 @@ import { useState, useEffect, useRef } from 'react'
 import axios from 'axios'
 import './App.css'
 
+// API URL - use environment variable or fallback to localhost
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5678'
+
 function App() {
   const [location, setLocation] = useState('London,uk')
   const [loading, setLoading] = useState(false)
@@ -113,7 +116,7 @@ function App() {
       setRetryAttempts({ weather: retryWeather, bitcoin: retryBitcoin })
 
       // Call the Collector webhook (which triggers the whole pipeline)
-      const response = await axios.post('http://localhost:5678/webhook/collect-data', {
+      const response = await axios.post(`${API_URL}/webhook/collect-data`, {
         location: loc,
         country: country
       })

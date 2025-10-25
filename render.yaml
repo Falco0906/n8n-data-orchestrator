@@ -1,0 +1,103 @@
+services:
+  # PostgreSQL Database
+  - type: pserv
+    name: n8n-postgres
+    env: docker
+    plan: free
+    dockerfilePath: ./Dockerfile.postgres
+    envVars:
+      - key: POSTGRES_DB
+        value: n8n
+      - key: POSTGRES_USER
+        value: n8n_user
+      - key: POSTGRES_PASSWORD
+        generateValue: true
+
+  # Redis Cache
+  - type: redis
+    name: n8n-redis
+    plan: free
+    maxmemoryPolicy: noeviction
+
+  # n8n Workflow Automation
+  - type: web
+    name: n8n-orchestrator
+    env: docker
+    plan: free
+    dockerfilePath: ./Dockerfile.n8n
+    envVars:
+      - key: N8N_PORT
+        value: 5678
+      - key: N8N_PROTOCOL
+        value: https
+      - key: N8N_HOST
+        fromService:
+          type: web
+          name: n8n-orchestrator
+          property: host
+      - key: WEBHOOK_URL
+        fromService:
+          type: web
+          name: n8n-orchestrator
+          property: host
+      - key: DB_TYPE
+        value: postgresdb
+      - key: DB_POSTGRESDB_HOST
+        fromDatabase:
+          name: n8n-postgres
+          property: host
+      - key: DB_POSTGRESDB_PORT
+        fromDatabase:
+          name: n8n-postgres
+          property: port
+      - key: DB_POSTGRESDB_DATABASE
+        fromDatabase:
+          name: n8n-postgres
+          property: database
+      - key: DB_POSTGRESDB_USER
+        fromDatabase:
+          name: n8n-postgres
+          property: user
+      - key: DB_POSTGRESDB_PASSWORD
+        fromDatabase:
+          name: n8n-postgres
+          property: password
+      - key: EXECUTIONS_MODE
+        value: queue
+      - key: QUEUE_BULL_REDIS_HOST
+        fromService:
+          type: redis
+          name: n8n-redis
+          property: host
+      - key: QUEUE_BULL_REDIS_PORT
+        fromService:
+          type: redis
+          name: n8n-redis
+          property: port
+      - key: N8N_SMTP_HOST
+        value: smtp.gmail.com
+      - key: N8N_SMTP_PORT
+        value: 587
+      - key: N8N_SMTP_USER
+        sync: false
+      - key: N8N_SMTP_PASS
+        sync: false
+      - key: N8N_SMTP_SENDER
+        sync: false
+
+  # React Frontend
+  - type: web
+    name: n8n-frontend
+    env: static
+    buildCommand: cd frontend-react && npm install && npm run build
+    staticPublishPath: ./frontend-react/dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: VITE_API_URL
+        fromService:
+          type: web
+          name: n8n-orchestrator
+          property: host
