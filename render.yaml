@@ -1,18 +1,10 @@
 services:
-  # PostgreSQL Database
-  - type: pserv
+  # PostgreSQL Database (Native Render Managed)
+  - type: postgres
     name: n8n-postgres
-    env: docker
     plan: free
-    dockerfilePath: ./Dockerfile.postgres
-    ipAllowList: []  # Allow all IPs (empty list = public access for free tier)
-    envVars:
-      - key: POSTGRES_DB
-        value: n8n
-      - key: POSTGRES_USER
-        value: n8n_user
-      - key: POSTGRES_PASSWORD
-        generateValue: true
+    databaseName: n8n
+    user: n8n_user
 
   # Redis Cache
   - type: redis
