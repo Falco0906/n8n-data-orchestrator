@@ -30,9 +30,16 @@ function App() {
   // Load history from localStorage on mount
   useEffect(() => {
     const savedHistory = localStorage.getItem('pipelineHistory')
+    const savedResult = localStorage.getItem('latestResult')
+    
     if (savedHistory) {
       const parsed = JSON.parse(savedHistory)
       setHistory(parsed)
+    }
+    
+    if (savedResult) {
+      const parsed = JSON.parse(savedResult)
+      setResult(parsed)
     }
   }, [])
 
@@ -42,6 +49,13 @@ function App() {
       localStorage.setItem('pipelineHistory', JSON.stringify(history))
     }
   }, [history])
+
+  // Save result to localStorage whenever it changes
+  useEffect(() => {
+    if (result) {
+      localStorage.setItem('latestResult', JSON.stringify(result))
+    }
+  }, [result])
 
   // Check email configuration on mount
   useEffect(() => {
