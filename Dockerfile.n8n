@@ -6,5 +6,5 @@ WORKDIR /home/node
 # Expose n8n port
 EXPOSE 5678
 
-# Use the default n8n startup command
-CMD ["n8n", "start"]
+# The n8n image already has the correct entrypoint, just use default
+CMD []
