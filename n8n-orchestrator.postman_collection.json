@@ -1,0 +1,352 @@
+{
+  "info": {
+    "name": "n8n Data Orchestrator API Collection",
+    "description": "Complete API collection for testing the n8n Data Intelligence Orchestrator workflows",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "version": "1.0.0"
+  },
+  "auth": {
+    "type": "basic",
+    "basic": [
+      {
+        "key": "username",
+        "value": "{{n8n_username}}",
+        "type": "string"
+      },
+      {
+        "key": "password",
+        "value": "{{n8n_password}}",
+        "type": "string"
+      }
+    ]
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Set timestamp for current request",
+          "pm.globals.set('timestamp', new Date().toISOString());"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:5678",
+      "type": "string"
+    },
+    {
+      "key": "grafana_url", 
+      "value": "http://localhost:3000",
+      "type": "string"
+    },
+    {
+      "key": "n8n_username",
+      "value": "admin",
+      "type": "string"
+    },
+    {
+      "key": "n8n_password",
+      "value": "admin_password",
+      "type": "string"
+    },
+    {
+      "key": "grafana_username",
+      "value": "admin",
+      "type": "string"
+    },
+    {
+      "key": "grafana_password",
+      "value": "admin_password",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Health Checks",
+      "item": [
+        {
+          "name": "n8n Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/healthz",
+              "host": ["{{base_url}}"],
+              "path": ["healthz"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Grafana Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{grafana_url}}/api/health",
+              "host": ["{{grafana_url}}"],
+              "path": ["api", "health"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Data Pipeline Workflows",
+      "item": [
+        {
+          "name": "1. Collector - Fetch Data",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"source\": \"public_api\",\n  \"config\": {\n    \"api_endpoint\": \"https://jsonplaceholder.typicode.com/posts\",\n    \"method\": \"GET\",\n    \"params\": {\n      \"_limit\": 10\n    }\n  },\n  \"metadata\": {\n    \"timestamp\": \"{{timestamp}}\",\n    \"collection_id\": \"{{$randomUUID}}\",\n    \"source_type\": \"rest_api\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/webhook/collector",
+              "host": ["{{base_url}}"],
+              "path": ["webhook", "collector"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "2. Validator - Data Validation",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"data_to_validate\": {\n    \"records\": [\n      {\n        \"id\": 1,\n        \"userId\": 1,\n        \"title\": \"Sample Post Title\",\n        \"body\": \"Sample post body content for validation\",\n        \"timestamp\": \"{{timestamp}}\"\n      },\n      {\n        \"id\": 2,\n        \"userId\": 2,\n        \"title\": \"Another Post Title\",\n        \"body\": \"Another post body with different content\",\n        \"timestamp\": \"{{timestamp}}\"\n      }\n    ]\n  },\n  \"validation_rules\": {\n    \"required_fields\": [\"id\", \"userId\", \"title\", \"body\"],\n    \"data_types\": {\n      \"id\": \"number\",\n      \"userId\": \"number\",\n      \"title\": \"string\",\n      \"body\": \"string\"\n    },\n    \"constraints\": {\n      \"title_min_length\": 5,\n      \"body_min_length\": 10\n    }\n  },\n  \"validation_config\": {\n    \"strict_mode\": true,\n    \"remove_invalid\": false,\n    \"log_errors\": true\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/webhook/validator",
+              "host": ["{{base_url}}"],
+              "path": ["webhook", "validator"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "3. Processor - Data Processing",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"validated_data\": {\n    \"records\": [\n      {\n        \"id\": 1,\n        \"userId\": 1,\n        \"title\": \"Sample Post Title\",\n        \"body\": \"Sample post body content for processing\",\n        \"validation_status\": \"valid\"\n      },\n      {\n        \"id\": 2,\n        \"userId\": 2,\n        \"title\": \"Another Post Title\", \n        \"body\": \"Another post body with different content\",\n        \"validation_status\": \"valid\"\n      }\n    ]\n  },\n  \"processing_config\": {\n    \"transformations\": [\n      \"normalize_text\",\n      \"extract_keywords\",\n      \"calculate_sentiment\",\n      \"enrich_metadata\"\n    ],\n    \"enrichment\": {\n      \"add_word_count\": true,\n      \"add_reading_time\": true,\n      \"add_sentiment_score\": true\n    },\n    \"output_format\": \"enhanced_json\",\n    \"custom_processing\": {\n      \"enable_ml_scoring\": true,\n      \"content_classification\": true\n    }\n  },\n  \"metadata\": {\n    \"processing_timestamp\": \"{{timestamp}}\",\n    \"processor_version\": \"1.0.0\",\n    \"batch_id\": \"{{$randomUUID}}\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/webhook/processor",
+              "host": ["{{base_url}}"],
+              "path": ["webhook", "processor"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "4. Reporter - Generate Report",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"processed_data\": {\n    \"summary\": {\n      \"total_records\": 2,\n      \"successful_processing\": 2,\n      \"failed_processing\": 0,\n      \"processing_time\": \"2.3s\",\n      \"average_sentiment_score\": 0.75,\n      \"total_word_count\": 156\n    },\n    \"records\": [\n      {\n        \"id\": 1,\n        \"processed_title\": \"sample post title\",\n        \"word_count\": 78,\n        \"sentiment_score\": 0.8,\n        \"reading_time\": \"0.3 min\",\n        \"keywords\": [\"sample\", \"post\", \"content\"],\n        \"category\": \"general\"\n      },\n      {\n        \"id\": 2,\n        \"processed_title\": \"another post title\",\n        \"word_count\": 78,\n        \"sentiment_score\": 0.7,\n        \"reading_time\": \"0.3 min\",\n        \"keywords\": [\"another\", \"post\", \"different\"],\n        \"category\": \"general\"\n      }\n    ],\n    \"metrics\": {\n      \"processing_success_rate\": 100,\n      \"data_quality_score\": 0.95,\n      \"error_count\": 0,\n      \"warnings_count\": 0\n    }\n  },\n  \"report_config\": {\n    \"format\": \"comprehensive\",\n    \"include_visualizations\": true,\n    \"include_raw_data\": false,\n    \"notify_grafana\": true,\n    \"save_to_file\": true,\n    \"alert_on_errors\": true\n  },\n  \"notification_config\": {\n    \"channels\": [\"grafana\", \"webhook\"],\n    \"alert_thresholds\": {\n      \"error_rate\": 5,\n      \"processing_time\": \"5s\",\n      \"data_quality_min\": 0.8\n    }\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/webhook/reporter",
+              "host": ["{{base_url}}"],
+              "path": ["webhook", "reporter"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Integration Tests",
+      "item": [
+        {
+          "name": "End-to-End Pipeline Test",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"test_config\": {\n    \"run_full_pipeline\": true,\n    \"data_source\": \"test_dataset\",\n    \"validate_outputs\": true\n  },\n  \"test_data\": {\n    \"sample_records\": [\n      {\n        \"id\": \"test_1\",\n        \"data\": \"Sample test data for end-to-end validation\",\n        \"metadata\": {\n          \"source\": \"integration_test\",\n          \"timestamp\": \"{{timestamp}}\"\n        }\n      }\n    ]\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/webhook/test-pipeline",
+              "host": ["{{base_url}}"],
+              "path": ["webhook", "test-pipeline"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Grafana Data Source Test",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"dashboard_update\": {\n    \"metrics\": {\n      \"workflow_executions\": 150,\n      \"success_rate\": 98.5,\n      \"average_processing_time\": 1.8,\n      \"data_throughput\": \"1.2MB/min\"\n    },\n    \"timestamps\": \"{{timestamp}}\",\n    \"status\": \"healthy\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/webhook/grafana-data",
+              "host": ["{{base_url}}"],
+              "path": ["webhook", "grafana-data"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Grafana API",
+      "item": [
+        {
+          "name": "Get Dashboards",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{grafana_url}}/api/search",
+              "host": ["{{grafana_url}}"],
+              "path": ["api", "search"]
+            },
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{grafana_username}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{grafana_password}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Data Sources",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{grafana_url}}/api/datasources",
+              "host": ["{{grafana_url}}"],
+              "path": ["api", "datasources"]
+            },
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{grafana_username}}",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "{{grafana_password}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Error Simulation",
+      "item": [
+        {
+          "name": "Invalid Data Test",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"invalid_data\": {\n    \"missing_required_field\": \"This should trigger validation errors\",\n    \"wrong_type\": \"string_instead_of_number\"\n  },\n  \"test_type\": \"validation_error\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/webhook/validator",
+              "host": ["{{base_url}}"],
+              "path": ["webhook", "validator"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Network Timeout Simulation",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"simulate\": \"timeout\",\n  \"delay_seconds\": 30,\n  \"test_resilience\": true\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/webhook/test-timeout",
+              "host": ["{{base_url}}"],
+              "path": ["webhook", "test-timeout"]
+            }
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}

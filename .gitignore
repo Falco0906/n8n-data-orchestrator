@@ -1,0 +1,47 @@
+# Logs directory
+*.log
+*.log.*
+
+# Environment variables
+.env
+
+# Data directories
+data/postgres/*
+data/redis/*
+data/n8n/*
+data/grafana/*
+
+# Backup files
+backups/
+*.backup
+*.dump
+
+# SSL certificates
+nginx/ssl/*
+
+# Docker
+.dockerignore
+
+# IDE
+.vscode/
+.idea/
+
+# macOS
+.DS_Store
+
+# Temporary files
+*.tmp
+*.temp
+temp/
+
+# Node modules (if any local development)
+node_modules/
+
+# Python cache (if any custom scripts)
+__pycache__/
+*.pyc
+*.pyo
+
+# Output files
+outputs/*/data/*
+!outputs/*/.gitkeep

@@ -1,0 +1,35 @@
+apiVersion: 1
+
+datasources:
+  - name: PostgreSQL-n8n
+    type: postgres
+    access: proxy
+    url: postgres:5432
+    database: n8n
+    user: n8n
+    secureJsonData:
+      password: ${POSTGRES_PASSWORD}
+    jsonData:
+      sslmode: disable
+      postgresVersion: 1500
+      timescaledb: false
+    isDefault: true
+    editable: true
+
+  - name: n8n-API
+    type: grafana-simple-json-datasource
+    access: proxy
+    url: http://n8n:5678/webhook/grafana-data
+    basicAuth: true
+    basicAuthUser: ${N8N_BASIC_AUTH_USER}
+    secureJsonData:
+      basicAuthPassword: ${N8N_BASIC_AUTH_PASSWORD}
+    isDefault: false
+    editable: true
+
+  - name: File-Data-Source
+    type: grafana-simple-json-datasource
+    access: proxy
+    url: http://n8n:5678/webhook/file-data
+    isDefault: false
+    editable: true
