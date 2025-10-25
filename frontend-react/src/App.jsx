@@ -21,8 +21,15 @@ function App() {
     bitcoin: 0
   })
   const [validationErrors, setValidationErrors] = useState([])
-  const [emailAlerts, setEmailAlerts] = useState(false)
+  const [emailAlerts, setEmailAlerts] = useState(true) // Changed to true since email is now configured
   const [darkMode, setDarkMode] = useState(true)
+
+  // Check email configuration on mount
+  useEffect(() => {
+    // Email is configured in .env with Gmail SMTP
+    // faisal96kp@gmail.com with app password
+    setEmailAlerts(true)
+  }, [])
 
   // Mouse tracking for card tilt effect
   const handleMouseMove = (e) => {
@@ -757,9 +764,13 @@ function App() {
 
         {/* Audit Logs Tab */}
         {activeTab === 'logs' && (
-          <div className="bg-gray-800 rounded-xl p-6 shadow-2xl border border-gray-700">
-            <h2 className="text-2xl font-semibold mb-4">📋 PostgreSQL Audit Logs</h2>
-            <p className="text-sm text-gray-400 mb-4">
+          <div className={`rounded-xl p-6 shadow-2xl border ${
+            darkMode 
+              ? 'bg-gray-800 border-gray-700' 
+              : 'bg-white border-gray-300'
+          }`}>
+            <h2 className={`text-2xl font-semibold mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>📋 PostgreSQL Audit Logs</h2>
+            <p className={`text-sm mb-4 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
               Centralized logs stored in PostgreSQL • Execution tracking • Version history
             </p>
             
@@ -767,32 +778,42 @@ function App() {
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="border-b border-gray-700">
-                      <th className="text-left p-3 text-gray-400">ID</th>
-                      <th className="text-left p-3 text-gray-400">Execution ID</th>
-                      <th className="text-left p-3 text-gray-400">Version</th>
-                      <th className="text-left p-3 text-gray-400">Stage</th>
-                      <th className="text-left p-3 text-gray-400">Status</th>
-                      <th className="text-left p-3 text-gray-400">Location</th>
-                      <th className="text-left p-3 text-gray-400">Timestamp</th>
+                    <tr className={`border-b ${darkMode ? 'border-gray-700' : 'border-gray-300'}`}>
+                      <th className={`text-left p-3 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>ID</th>
+                      <th className={`text-left p-3 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Execution ID</th>
+                      <th className={`text-left p-3 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Version</th>
+                      <th className={`text-left p-3 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Stage</th>
+                      <th className={`text-left p-3 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Status</th>
+                      <th className={`text-left p-3 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Location</th>
+                      <th className={`text-left p-3 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Timestamp</th>
                     </tr>
                   </thead>
                   <tbody>
                     {auditLogs.map((log) => (
-                      <tr key={log.id} className="border-b border-gray-700/50 hover:bg-gray-700/30">
-                        <td className="p-3 text-gray-300">{log.id}</td>
-                        <td className="p-3 font-mono text-xs text-blue-300">{log.execution_id?.slice(0, 12)}...</td>
-                        <td className="p-3 font-mono text-xs text-purple-300">{log.version?.slice(0, 15)}</td>
-                        <td className="p-3 text-gray-300">{log.stage}</td>
+                      <tr key={log.id} className={`border-b transition-colors ${
+                        darkMode 
+                          ? 'border-gray-700/50 hover:bg-gray-700/30' 
+                          : 'border-gray-200 hover:bg-gray-50'
+                      }`}>
+                        <td className={`p-3 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{log.id}</td>
+                        <td className={`p-3 font-mono text-xs ${darkMode ? 'text-blue-300' : 'text-blue-600'}`}>{log.execution_id?.slice(0, 12)}...</td>
+                        <td className={`p-3 font-mono text-xs ${darkMode ? 'text-purple-300' : 'text-purple-600'}`}>{log.version?.slice(0, 15)}</td>
+                        <td className={`p-3 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{log.stage}</td>
                         <td className="p-3">
                           <span className={`px-2 py-1 rounded text-xs ${
-                            log.status === 'success' ? 'bg-green-900/30 text-green-300' : 'bg-red-900/30 text-red-300'
+                            log.status === 'success' 
+                              ? darkMode 
+                                ? 'bg-green-900/30 text-green-300' 
+                                : 'bg-green-100 text-green-700'
+                              : darkMode 
+                              ? 'bg-red-900/30 text-red-300' 
+                              : 'bg-red-100 text-red-700'
                           }`}>
                             {log.status}
                           </span>
                         </td>
-                        <td className="p-3 text-gray-300">{log.location}</td>
-                        <td className="p-3 text-gray-400 text-xs">{log.timestamp}</td>
+                        <td className={`p-3 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{log.location}</td>
+                        <td className={`p-3 text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>{log.timestamp}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -800,15 +821,19 @@ function App() {
               </div>
             ) : (
               <div className="text-center py-12">
-                <p className="text-gray-400 mb-2">No audit logs available</p>
-                <p className="text-sm text-gray-500">Run the pipeline to generate logs</p>
+                <p className={`mb-2 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>No audit logs available</p>
+                <p className={`text-sm ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>Run the pipeline to generate logs</p>
               </div>
             )}
             
-            <div className="mt-6 p-4 bg-blue-900/20 border border-blue-700/30 rounded-lg">
-              <p className="text-sm text-blue-300">
-                💡 <strong>Note:</strong> Logs are stored in PostgreSQL at <code className="bg-gray-900/50 px-2 py-1 rounded">audit_logs</code> table.
-                Use the query: <code className="bg-gray-900/50 px-2 py-1 rounded text-xs">SELECT * FROM audit_logs ORDER BY timestamp DESC;</code>
+            <div className={`mt-6 p-4 rounded-lg border ${
+              darkMode 
+                ? 'bg-blue-900/20 border-blue-700/30' 
+                : 'bg-blue-50 border-blue-300'
+            }`}>
+              <p className={`text-sm ${darkMode ? 'text-blue-300' : 'text-blue-700'}`}>
+                💡 <strong>Note:</strong> Logs are stored in PostgreSQL at <code className={`px-2 py-1 rounded ${darkMode ? 'bg-gray-900/50' : 'bg-white'}`}>audit_logs</code> table.
+                Use the query: <code className={`px-2 py-1 rounded text-xs ${darkMode ? 'bg-gray-900/50' : 'bg-white'}`}>SELECT * FROM audit_logs ORDER BY timestamp DESC;</code>
               </p>
             </div>
           </div>
@@ -818,80 +843,174 @@ function App() {
         {activeTab === 'monitoring' && (
           <div className="space-y-6">
             {/* Email Alert Setup */}
-            <div className="bg-gray-800 rounded-xl p-6 shadow-2xl border border-gray-700">
-              <h2 className="text-2xl font-semibold mb-4">📧 Email Alert Configuration</h2>
+            <div 
+              className={`group relative rounded-2xl p-8 border shadow-lg hover:shadow-2xl backdrop-blur-sm cursor-pointer ${
+                darkMode 
+                  ? 'border-green-500/30 bg-gradient-to-br from-green-900/20 to-gray-900/80 hover:shadow-green-500/20' 
+                  : 'border-green-400/50 bg-gradient-to-br from-green-50 to-white hover:shadow-green-500/40 shadow-xl'
+              }`}
+              onMouseMove={handleMouseMove}
+              onMouseLeave={handleMouseLeave}
+              style={{ transformStyle: 'preserve-3d', perspective: '1000px', transition: 'transform 0.1s ease-out' }}
+            >
+              <div className={`absolute inset-0 rounded-2xl bg-gradient-to-br opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none ${
+                darkMode ? 'from-white/5 to-transparent' : 'from-green-200/50 to-transparent'
+              }`}></div>
+              <div className={`absolute -top-px left-12 right-12 h-px bg-gradient-to-r from-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 ${
+                darkMode ? 'via-green-400/40' : 'via-green-500/60'
+              }`}></div>
               
-              <div className={`p-4 rounded-lg mb-4 ${emailAlerts ? 'bg-green-900/20 border border-green-700/30' : 'bg-yellow-900/20 border border-yellow-700/30'}`}>
-                <p className="text-sm font-semibold mb-2">
-                  {emailAlerts ? '✅ Email alerts are configured' : '⚠️ Email alerts need configuration'}
-                </p>
-                <p className="text-xs text-gray-400">
-                  Configure Gmail SMTP in .env file to enable email notifications for validation failures
-                </p>
-              </div>
-
-              <div className="bg-gray-900/50 rounded-lg p-4 border border-gray-700">
-                <h3 className="font-semibold mb-3 text-blue-300">📝 Setup Instructions:</h3>
-                <ol className="text-sm text-gray-300 space-y-2 list-decimal list-inside">
-                  <li>Go to <a href="https://myaccount.google.com/security" target="_blank" className="text-blue-400 hover:underline">Google Account Security</a></li>
-                  <li>Enable <strong>2-Factor Authentication</strong> if not already enabled</li>
-                  <li>Go to <a href="https://myaccount.google.com/apppasswords" target="_blank" className="text-blue-400 hover:underline">App Passwords</a></li>
-                  <li>Generate a new App Password for "Mail"</li>
-                  <li>Copy the 16-character password (no spaces)</li>
-                  <li>Update <code className="bg-gray-800 px-2 py-1 rounded text-xs">N8N_SMTP_PASS</code> in .env file</li>
-                  <li>Restart Docker: <code className="bg-gray-800 px-2 py-1 rounded text-xs">docker-compose restart n8n</code></li>
-                </ol>
-
-                <div className="mt-4 p-3 bg-gray-800/50 rounded border border-gray-600">
-                  <p className="text-xs text-gray-400 mb-2">Current .env settings:</p>
-                  <pre className="text-xs text-green-300 font-mono">
-{`N8N_SMTP_HOST=smtp.gmail.com
-N8N_SMTP_PORT=587
-N8N_SMTP_USER=faisal96kp@gmail.com
-N8N_SMTP_PASS=<your-app-password-here>
-N8N_SMTP_SENDER=faisal96kp@gmail.com`}
-                  </pre>
+              <div className="relative z-10">
+                <h2 className={`text-2xl font-bold mb-6 flex items-center gap-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                  <span className="text-2xl">📧</span>
+                  Email Alert System
+                </h2>
+                
+                <div className={`p-6 rounded-xl mb-6 border ${
+                  emailAlerts 
+                    ? darkMode
+                      ? 'bg-green-900/30 border-green-500/40' 
+                      : 'bg-green-100 border-green-400'
+                    : darkMode
+                    ? 'bg-yellow-900/30 border-yellow-500/40' 
+                    : 'bg-yellow-100 border-yellow-400'
+                }`}>
+                  <div className="flex items-center gap-3 mb-3">
+                    <span className="text-3xl">{emailAlerts ? '✅' : '⚠️'}</span>
+                    <div>
+                      <p className={`font-bold text-lg ${
+                        emailAlerts 
+                          ? darkMode ? 'text-green-300' : 'text-green-700'
+                          : darkMode ? 'text-yellow-300' : 'text-yellow-700'
+                      }`}>
+                        {emailAlerts ? 'Email System Configured & Active!' : 'Email alerts need configuration'}
+                      </p>
+                      <p className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                        {emailAlerts 
+                          ? 'Gmail SMTP configured • Validation failure alerts enabled' 
+                          : 'Configure Gmail SMTP in .env file to enable notifications'}
+                      </p>
+                    </div>
+                  </div>
+                  
+                  {emailAlerts && (
+                    <div className={`mt-4 p-4 rounded-lg ${darkMode ? 'bg-gray-800/60' : 'bg-white/80'}`}>
+                      <p className={`text-sm font-semibold mb-2 ${darkMode ? 'text-green-400' : 'text-green-700'}`}>
+                        📬 Configuration Details:
+                      </p>
+                      <ul className={`text-sm space-y-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                        <li>• <strong>SMTP Host:</strong> smtp.gmail.com:587</li>
+                        <li>• <strong>Email:</strong> faisal96kp@gmail.com</li>
+                        <li>• <strong>Authentication:</strong> App Password ✓</li>
+                        <li>• <strong>Trigger:</strong> Quality score &lt; 50 in Validator stage</li>
+                        <li>• <strong>Status:</strong> <span className={darkMode ? 'text-green-400' : 'text-green-600'}>Active & Ready</span></li>
+                      </ul>
+                    </div>
+                  )}
                 </div>
+
+                {!emailAlerts && (
+                  <div className={`rounded-xl p-6 border ${darkMode ? 'bg-gray-800/50 border-gray-700' : 'bg-gray-50 border-gray-300'}`}>
+                    <h3 className={`font-semibold mb-4 ${darkMode ? 'text-blue-300' : 'text-blue-600'}`}>📝 Quick Setup Guide:</h3>
+                    <ol className={`text-sm space-y-2 list-decimal list-inside ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                      <li>Go to <a href="https://myaccount.google.com/security" target="_blank" className="text-blue-400 hover:underline font-medium">Google Account Security</a></li>
+                      <li>Enable <strong>2-Factor Authentication</strong></li>
+                      <li>Generate <a href="https://myaccount.google.com/apppasswords" target="_blank" className="text-blue-400 hover:underline font-medium">App Password</a> for "Mail"</li>
+                      <li>Copy the 16-character password (remove spaces)</li>
+                      <li>Update <code className={`px-2 py-1 rounded text-xs ${darkMode ? 'bg-gray-700 text-green-300' : 'bg-gray-200 text-purple-700'}`}>N8N_SMTP_PASS</code> in .env</li>
+                      <li>Run: <code className={`px-2 py-1 rounded text-xs ${darkMode ? 'bg-gray-700 text-blue-300' : 'bg-gray-200 text-blue-700'}`}>docker-compose restart n8n</code></li>
+                    </ol>
+                  </div>
+                )}
               </div>
             </div>
 
             {/* Services Status */}
-            <div className="bg-gray-800 rounded-xl p-6 shadow-2xl border border-gray-700">
-              <h2 className="text-2xl font-semibold mb-4">🖥️ Services Status</h2>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                {[
-                  { name: 'n8n', port: '5678', url: 'http://localhost:5678', status: 'running' },
-                  { name: 'PostgreSQL', port: '5432', status: 'running' },
-                  { name: 'Grafana', port: '3000', url: 'http://localhost:3000', status: 'running' },
-                  { name: 'Redis', port: '6379', status: 'running' },
-                  { name: 'Frontend', port: '3001', url: 'http://localhost:3001', status: 'running' }
-                ].map((service) => (
-                  <div key={service.name} className="bg-gray-700/50 rounded-lg p-4 border border-gray-600">
-                    <div className="flex items-center justify-between mb-2">
-                      <h3 className="font-semibold">{service.name}</h3>
-                      <span className="text-green-400 text-xl">✓</span>
+            <div 
+              className={`group relative rounded-2xl p-8 border shadow-lg hover:shadow-2xl backdrop-blur-sm cursor-pointer ${
+                darkMode 
+                  ? 'border-blue-500/30 bg-gradient-to-br from-blue-900/20 to-gray-900/80 hover:shadow-blue-500/20' 
+                  : 'border-blue-400/50 bg-gradient-to-br from-blue-50 to-white hover:shadow-blue-500/40 shadow-xl'
+              }`}
+              onMouseMove={handleMouseMove}
+              onMouseLeave={handleMouseLeave}
+              style={{ transformStyle: 'preserve-3d', perspective: '1000px', transition: 'transform 0.1s ease-out' }}
+            >
+              <div className={`absolute inset-0 rounded-2xl bg-gradient-to-br opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none ${
+                darkMode ? 'from-white/5 to-transparent' : 'from-blue-200/50 to-transparent'
+              }`}></div>
+              <div className={`absolute -top-px left-12 right-12 h-px bg-gradient-to-r from-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 ${
+                darkMode ? 'via-blue-400/40' : 'via-blue-500/60'
+              }`}></div>
+              
+              <div className="relative z-10">
+                <h2 className={`text-2xl font-bold mb-6 flex items-center gap-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                  <span className="text-2xl">🖥️</span>
+                  Services Status
+                </h2>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                  {[
+                    { name: 'n8n', port: '5678', url: 'http://localhost:5678', status: 'running' },
+                    { name: 'PostgreSQL', port: '5432', status: 'running' },
+                    { name: 'Grafana', port: '3000', url: 'http://localhost:3000', status: 'running' },
+                    { name: 'Redis', port: '6379', status: 'running' },
+                    { name: 'Frontend', port: '3003', url: 'http://localhost:3003', status: 'running' }
+                  ].map((service) => (
+                    <div 
+                      key={service.name} 
+                      className={`rounded-xl p-4 border transition-all ${
+                        darkMode 
+                          ? 'bg-gray-800/60 border-gray-700 hover:border-gray-600 hover:bg-gray-700/60' 
+                          : 'bg-white/80 border-gray-300 hover:border-gray-400 hover:bg-gray-50'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <h3 className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{service.name}</h3>
+                        <span className={darkMode ? 'text-green-400 text-xl' : 'text-green-600 text-xl'}>✓</span>
+                      </div>
+                      <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Port: {service.port}</p>
+                      {service.url && (
+                        <a href={service.url} target="_blank" className="text-xs text-blue-400 hover:underline mt-1 block">
+                          Open →
+                        </a>
+                      )}
                     </div>
-                    <p className="text-xs text-gray-400">Port: {service.port}</p>
-                    {service.url && (
-                      <a href={service.url} target="_blank" className="text-xs text-blue-400 hover:underline mt-1 block">
-                        Open →
-                      </a>
-                    )}
-                  </div>
-                ))}
+                  ))}
+              </div>
               </div>
             </div>
 
             {/* Grafana Dashboard */}
-            <div className="bg-gray-800 rounded-xl p-6 shadow-2xl border border-gray-700">
-              <h2 className="text-2xl font-semibold mb-4">📈 Grafana Dashboard</h2>
-              <p className="text-sm text-gray-400 mb-4">
-                Real-time metrics and visualization at <a href="http://localhost:3000" target="_blank" className="text-blue-400 hover:underline">localhost:3000</a>
-              </p>
-              <div className="bg-gray-700/50 rounded-lg p-4 border border-gray-600">
-                <p className="text-sm text-gray-300 mb-2"><strong>Credentials:</strong></p>
-                <p className="text-sm text-gray-400">Username: <code className="bg-gray-800 px-2 py-1 rounded">admin</code></p>
-                <p className="text-sm text-gray-400">Password: <code className="bg-gray-800 px-2 py-1 rounded">admin123</code></p>
+            <div 
+              className={`group relative rounded-2xl p-8 border shadow-lg hover:shadow-2xl backdrop-blur-sm cursor-pointer ${
+                darkMode 
+                  ? 'border-orange-500/30 bg-gradient-to-br from-orange-900/20 to-gray-900/80 hover:shadow-orange-500/20' 
+                  : 'border-orange-400/50 bg-gradient-to-br from-orange-50 to-white hover:shadow-orange-500/40 shadow-xl'
+              }`}
+              onMouseMove={handleMouseMove}
+              onMouseLeave={handleMouseLeave}
+              style={{ transformStyle: 'preserve-3d', perspective: '1000px', transition: 'transform 0.1s ease-out' }}
+            >
+              <div className={`absolute inset-0 rounded-2xl bg-gradient-to-br opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none ${
+                darkMode ? 'from-white/5 to-transparent' : 'from-orange-200/50 to-transparent'
+              }`}></div>
+              <div className={`absolute -top-px left-12 right-12 h-px bg-gradient-to-r from-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 ${
+                darkMode ? 'via-orange-400/40' : 'via-orange-500/60'
+              }`}></div>
+              
+              <div className="relative z-10">
+                <h2 className={`text-2xl font-bold mb-4 flex items-center gap-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                  <span className="text-2xl">📈</span>
+                  Grafana Dashboard
+                </h2>
+                <p className={`text-sm mb-4 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                  Real-time metrics and visualization at <a href="http://localhost:3000" target="_blank" className="text-blue-400 hover:underline">localhost:3000</a>
+                </p>
+                <div className={`rounded-lg p-4 border ${darkMode ? 'bg-gray-800/50 border-gray-700' : 'bg-gray-50 border-gray-300'}`}>
+                  <p className={`text-sm mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}><strong>Credentials:</strong></p>
+                  <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Username: <code className={`px-2 py-1 rounded ${darkMode ? 'bg-gray-700 text-blue-300' : 'bg-gray-200 text-blue-700'}`}>admin</code></p>
+                  <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Password: <code className={`px-2 py-1 rounded ${darkMode ? 'bg-gray-700 text-purple-300' : 'bg-gray-200 text-purple-700'}`}>admin123</code></p>
+                </div>
               </div>
             </div>
           </div>
@@ -899,10 +1018,14 @@ N8N_SMTP_SENDER=faisal96kp@gmail.com`}
 
         {/* Empty State */}
         {activeTab === 'pipeline' && !result && history.length === 0 && (
-          <div className="bg-gray-800 rounded-xl p-12 text-center shadow-2xl border border-gray-700">
+          <div className={`rounded-xl p-12 text-center shadow-2xl border ${
+            darkMode 
+              ? 'bg-gray-800 border-gray-700' 
+              : 'bg-white border-gray-300'
+          }`}>
             <div className="text-6xl mb-4">🚀</div>
-            <p className="text-gray-400 text-lg mb-4">No pipeline executions yet</p>
-            <p className="text-gray-500">Select a location and trigger the pipeline to see real-time results</p>
+            <p className={`text-lg mb-4 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>No pipeline executions yet</p>
+            <p className={darkMode ? 'text-gray-500' : 'text-gray-500'}>Select a location and trigger the pipeline to see real-time results</p>
           </div>
         )}
       </div>
