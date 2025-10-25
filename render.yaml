@@ -1,18 +1,4 @@
 services:
-  # PostgreSQL Database (Native Render Managed)
-  - type: pserv
-    name: n8n-postgres
-    plan: free
-    env: postgresql
-    databaseName: n8n
-    user: n8n_user
-
-  # Redis Cache
-  - type: redis
-    name: n8n-redis
-    plan: free
-    maxmemoryPolicy: noeviction
-
   # n8n Workflow Automation
   - type: web
     name: n8n-orchestrator
@@ -35,39 +21,9 @@ services:
           name: n8n-orchestrator
           property: host
       - key: DB_TYPE
-        value: postgresdb
-      - key: DB_POSTGRESDB_HOST
-        fromDatabase:
-          name: n8n-postgres
-          property: host
-      - key: DB_POSTGRESDB_PORT
-        fromDatabase:
-          name: n8n-postgres
-          property: port
-      - key: DB_POSTGRESDB_DATABASE
-        fromDatabase:
-          name: n8n-postgres
-          property: database
-      - key: DB_POSTGRESDB_USER
-        fromDatabase:
-          name: n8n-postgres
-          property: user
-      - key: DB_POSTGRESDB_PASSWORD
-        fromDatabase:
-          name: n8n-postgres
-          property: password
+        value: sqlite
       - key: EXECUTIONS_MODE
-        value: queue
-      - key: QUEUE_BULL_REDIS_HOST
-        fromService:
-          type: redis
-          name: n8n-redis
-          property: host
-      - key: QUEUE_BULL_REDIS_PORT
-        fromService:
-          type: redis
-          name: n8n-redis
-          property: port
+        value: regular
       - key: N8N_SMTP_HOST
         value: smtp.gmail.com
       - key: N8N_SMTP_PORT
