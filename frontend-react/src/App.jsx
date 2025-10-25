@@ -27,6 +27,22 @@ function App() {
   const [emailAlerts, setEmailAlerts] = useState(true) // Changed to true since email is now configured
   const [darkMode, setDarkMode] = useState(true)
 
+  // Load history from localStorage on mount
+  useEffect(() => {
+    const savedHistory = localStorage.getItem('pipelineHistory')
+    if (savedHistory) {
+      const parsed = JSON.parse(savedHistory)
+      setHistory(parsed)
+    }
+  }, [])
+
+  // Save history to localStorage whenever it changes
+  useEffect(() => {
+    if (history.length > 0) {
+      localStorage.setItem('pipelineHistory', JSON.stringify(history))
+    }
+  }, [history])
+
   // Check email configuration on mount
   useEffect(() => {
     // Email is configured in .env with Gmail SMTP
