@@ -52,8 +52,36 @@ function App() {
 
   // Save result to localStorage whenever it changes
   useEffect(() => {
+    // Try to restore the persisted latest result
+    try {
+      const raw = localStorage.getItem('latestResult');
+      if (raw) {
+        setResult(JSON.parse(raw));
+        return;
+      }
+      // fallback: if no latestResult, use the most recent history entry
+      const rawHist = localStorage.getItem('pipelineHistory');
+      if (rawHist) {
+        const hist = JSON.parse(rawHist);
+        if (Array.isArray(hist) && hist.length > 0) {
+          setResult(hist[0]); // assume hist[0] is newest
+          localStorage.setItem('latestResult', JSON.stringify(hist[0]));
+        }
+      }
+    } catch (e) {
+      // keep silent but log in dev
+      if (process.env.NODE_ENV === 'development') console.error('restore latestResult', e);
+    }
+  }, []);
+
+  // Save result to localStorage whenever it changes
+  useEffect(() => {
     if (result) {
-      localStorage.setItem('latestResult', JSON.stringify(result))
+      try {
+        localStorage.setItem('latestResult', JSON.stringify(result));
+      } catch (e) {
+        if (process.env.NODE_ENV === 'development') console.error('persist latestResult', e);
+      }
     }
   }, [result])
 
@@ -349,7 +377,7 @@ function App() {
           >
               <div className={`absolute inset-0 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300 ${
                 emailAlerts 
-                  ? darkMode ? 'bg-gradient-to-r from-green-400/10 to-emerald-400/10' : 'bg-gradient-to-r from-green-200/30 to-emerald-200/30'
+                  ? darkMode ? 'bg-gradient-to-r from-green-400/10 to-emerald-400/10' : 'bg-gradient-to-r from_GREEN-200/30 to-emerald-200/30'
                   : darkMode ? 'bg-gradient-to-r from-red-400/10 to-rose-400/10' : 'bg-gradient-to-r from-red-200/30 to-rose-200/30'
               }`}></div>
               <span className="relative z-10">{emailAlerts ? '✓' : '✗'} Email Alerts</span>
