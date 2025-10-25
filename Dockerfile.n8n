@@ -3,10 +3,8 @@ FROM n8nio/n8n:latest
 # Set working directory
 WORKDIR /home/node
 
-# Copy workflows
-COPY workflows/ /home/node/.n8n/workflows/
-
 # Expose n8n port
 EXPOSE 5678
 
-CMD ["n8n"]
+# Use the default n8n startup command
+CMD ["n8n", "start"]
