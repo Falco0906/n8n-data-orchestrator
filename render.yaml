@@ -1,8 +1,9 @@
 services:
   # PostgreSQL Database (Native Render Managed)
-  - type: postgres
+  - type: pserv
     name: n8n-postgres
     plan: free
+    env: postgresql
     databaseName: n8n
     user: n8n_user
 
